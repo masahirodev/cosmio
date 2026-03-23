@@ -28,6 +28,9 @@ export type { WithMetrics } from "./client/metrics.js";
 export type { DtoQueryBuilder, ProjectedQueryBuilder } from "./client/query-builder.js";
 export { QueryBuilder } from "./client/query-builder.js";
 export { TransactionBuilder } from "./client/transaction.js";
+// Config
+export type { CosmioConfig, CosmioConnectionConfig, PullTarget } from "./config/define-config.js";
+export { defineConfig } from "./config/define-config.js";
 export type { CosmioErrorCode } from "./errors/index.js";
 // Errors
 export {
@@ -48,13 +51,22 @@ export {
   getInvocationCache,
   withCosmioContext,
 } from "./integrations/azure-functions.js";
+// Introspect
+export type {
+  ContainerMetadata,
+  InferredField,
+  InferredSchema,
+  InferredType,
+  PullResult,
+} from "./introspect/index.js";
+export { generateModelSource, inferSchema, pull, toPascalCase } from "./introspect/index.js";
 export type { Migration } from "./migration/migration-registry.js";
 // Migration
 export { MigrationRegistry } from "./migration/migration-registry.js";
 export { defineModel } from "./model/define-model.js";
 export type { DtoModelOverride, DtoPolicyConfig } from "./model/dto-policy.js";
 // DTO Policy
-export { defineDtoPolicy, DtoPolicy } from "./model/dto-policy.js";
+export { DtoPolicy, defineDtoPolicy } from "./model/dto-policy.js";
 export type {
   CreateInputWithDefaults,
   DefaultsMap,
@@ -62,10 +74,10 @@ export type {
   Discriminator,
   DtoMap,
   DtoRule,
-  ResolveDtoMap,
-  ResolveDtoRule,
   ModelConfig,
   ModelDefinition,
+  ResolveDtoMap,
+  ResolveDtoRule,
 } from "./model/model-types.js";
 // Repository
 export { defineRepository } from "./model/repository.js";
@@ -95,15 +107,3 @@ export { ensureContainer, ensureContainers } from "./utils/container-setup.js";
 // Utilities
 export { buildPartitionKey, extractPartitionKey } from "./utils/partition-key.js";
 export { extractDescriptions } from "./utils/schema-descriptions.js";
-// Config
-export type { CosmioConfig, CosmioConnectionConfig, PullTarget } from "./config/define-config.js";
-export { defineConfig } from "./config/define-config.js";
-// Introspect
-export type {
-  InferredField,
-  InferredSchema,
-  InferredType,
-  ContainerMetadata,
-  PullResult,
-} from "./introspect/index.js";
-export { inferSchema, generateModelSource, toPascalCase, pull } from "./introspect/index.js";

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { TransactionBuilder } from "../../src/client/transaction.js";
-import { CosmioError, ConflictError, TooManyRequestsError } from "../../src/errors/index.js";
+import { ConflictError, CosmioError, TooManyRequestsError } from "../../src/errors/index.js";
 
 function mockContainer(batchFn: ReturnType<typeof vi.fn>) {
   return {

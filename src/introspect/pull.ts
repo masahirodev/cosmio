@@ -5,7 +5,7 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { CosmioConnectionConfig, PullTarget } from "../config/define-config.js";
-import { toPascalCase, generateModelSource } from "./codegen.js";
+import { generateModelSource, toPascalCase } from "./codegen.js";
 import { inferSchema } from "./infer-schema.js";
 import { sampleContainer } from "./sample.js";
 

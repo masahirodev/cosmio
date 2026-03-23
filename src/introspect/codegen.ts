@@ -3,8 +3,8 @@
  * Produces a complete defineModel() source file.
  */
 
-import type { ContainerMetadata } from "./sample.js";
 import type { InferredField, InferredSchema, InferredType } from "./infer-schema.js";
+import type { ContainerMetadata } from "./sample.js";
 
 export interface CodegenOptions {
   modelName: string;

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  CosmioError,
   ConflictError,
+  CosmioError,
+  mapCosmosError,
   NotFoundError,
   PreconditionFailedError,
   TooManyRequestsError,
-  mapCosmosError,
 } from "../../src/errors/index.js";
 
 describe("mapCosmosError", () => {

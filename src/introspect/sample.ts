@@ -2,8 +2,8 @@
  * Connect to Cosmos DB and sample documents from a container.
  */
 
-import { CosmosClient } from "@azure/cosmos";
 import type { ConflictResolutionPolicy, IndexingPolicy, UniqueKeyPolicy } from "@azure/cosmos";
+import { CosmosClient } from "@azure/cosmos";
 import type { CosmioConnectionConfig } from "../config/define-config.js";
 
 export interface ContainerMetadata {

@@ -3,8 +3,8 @@ import { writeFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { z } from "zod";
-import { loadConfig } from "../src/config/load-config.js";
 import type { CosmioConnectionConfig, PullTarget } from "../src/config/define-config.js";
+import { loadConfig } from "../src/config/load-config.js";
 import { pull } from "../src/introspect/pull.js";
 import type { ModelDefinition } from "../src/model/model-types.js";
 import { toJsonSchemas } from "../src/schema/json-schema.js";
@@ -52,7 +52,7 @@ function parseArgs(args: string[]): Record<string, string> {
 async function handlePull(args: string[]): Promise<void> {
   const parsed = parseArgs(args);
 
-  if (parsed["help"] === "true") {
+  if (parsed.help === "true") {
     console.error("Usage: cosmio pull [options]");
     console.error("");
     console.error("Generate model definitions from Cosmos DB containers.");
@@ -87,14 +87,13 @@ async function handlePull(args: string[]): Promise<void> {
 
   // Resolve connection: CLI args > config > env vars
   const connection = stripUndefined({
-    endpoint: parsed["endpoint"] ?? config?.connection.endpoint ?? process.env.COSMOS_ENDPOINT,
-    key: parsed["key"] ?? config?.connection.key ?? process.env.COSMOS_KEY,
+    endpoint: parsed.endpoint ?? config?.connection.endpoint ?? process.env.COSMOS_ENDPOINT,
+    key: parsed.key ?? config?.connection.key ?? process.env.COSMOS_KEY,
     connectionString:
       parsed["connection-string"] ??
       config?.connection.connectionString ??
       process.env.COSMOS_CONNECTION_STRING,
-    database:
-      parsed["database"] ?? config?.connection.database ?? process.env.COSMOS_DATABASE ?? "",
+    database: parsed.database ?? config?.connection.database ?? process.env.COSMOS_DATABASE ?? "",
     disableTls: parsed["disable-tls"] === "true" || config?.connection.disableTls || false,
   }) as CosmioConnectionConfig;
 
@@ -110,18 +109,18 @@ async function handlePull(args: string[]): Promise<void> {
   // Resolve targets
   let targets: PullTarget[];
 
-  if (parsed["container"]) {
+  if (parsed.container) {
     // Single container from CLI
-    const configTarget = config?.pull?.find((t) => t.container === parsed["container"]);
+    const configTarget = config?.pull?.find((t) => t.container === parsed.container);
     targets = [
       stripUndefined({
-        container: parsed["container"],
-        name: parsed["name"] ?? configTarget?.name,
-        output: parsed["output"] ?? configTarget?.output,
+        container: parsed.container,
+        name: parsed.name ?? configTarget?.name,
+        output: parsed.output ?? configTarget?.output,
         sampleSize: parsed["sample-size"]
           ? Number.parseInt(parsed["sample-size"], 10)
           : configTarget?.sampleSize,
-        where: parsed["where"] ?? configTarget?.where,
+        where: parsed.where ?? configTarget?.where,
         enumThreshold: parsed["enum-threshold"]
           ? Number.parseInt(parsed["enum-threshold"], 10)
           : configTarget?.enumThreshold,
