@@ -140,7 +140,6 @@ export class QueryBuilder<
 
   constructor(
     container: Container,
-    // biome-ignore lint/suspicious/noExplicitAny: accept models with any defaults/DtoMap
     model: ModelDefinition<TSchema, TPaths, any, any>,
     partitionKeyValues?: readonly unknown[],
     postProcess?: (

@@ -5,8 +5,7 @@ import { CosmioClient } from "../../src/client/cosmio-client.js";
  * Cosmos DB Emulator default connection settings.
  * The vnext-preview emulator uses a well-known key.
  */
-export const EMULATOR_ENDPOINT =
-  process.env.COSMOS_EMULATOR_ENDPOINT ?? "https://localhost:8081";
+export const EMULATOR_ENDPOINT = process.env.COSMOS_EMULATOR_ENDPOINT ?? "https://localhost:8081";
 export const EMULATOR_KEY =
   "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
 export const TEST_DATABASE = "cosmio-test";

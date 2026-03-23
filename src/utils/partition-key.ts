@@ -22,7 +22,6 @@ export function extractPartitionKey<
   TSchema extends z.ZodObject<z.ZodRawShape>,
   TPaths extends readonly [string, ...string[]],
 >(
-  // biome-ignore lint/suspicious/noExplicitAny: defaults/dto are irrelevant for PK extraction
   model: ModelDefinition<TSchema, TPaths, any, any>,
   document: Record<string, unknown>,
 ): PartitionKeyValues<TSchema, TPaths> {
