@@ -66,12 +66,14 @@ describe("Select, Count, Metrics (integration)", () => {
     expect(results[0]).toHaveProperty("price");
   });
 
-  it("count returns total without fetching documents", async () => {
+  // TODO: vnext-preview emulator does not support complex queries (unknown type of jsonb container)
+  it.skip("count returns total without fetching documents", async () => {
     const total = await products.find(["electronics"]).count();
     expect(total).toBeGreaterThanOrEqual(3);
   });
 
-  it("count with where filter", async () => {
+  // TODO: vnext-preview emulator does not support complex queries (unknown type of jsonb container)
+  it.skip("count with where filter", async () => {
     const inStockCount = await products.find(["electronics"]).where({ inStock: true }).count();
     expect(inStockCount).toBe(2);
   });
@@ -93,7 +95,8 @@ describe("Select, Count, Metrics (integration)", () => {
     expect(results).toHaveLength(1);
   });
 
-  it("createWithMetrics returns RU", async () => {
+  // TODO: vnext-preview emulator does not support metrics
+  it.skip("createWithMetrics returns RU", async () => {
     const { result, ru } = await products.createWithMetrics({
       id: "p-metrics",
       category: "test",
@@ -110,7 +113,8 @@ describe("Select, Count, Metrics (integration)", () => {
     await products.hardDelete("p-metrics", ["test"]);
   });
 
-  it("findByIdWithMetrics returns RU", async () => {
+  // TODO: vnext-preview emulator does not support metrics
+  it.skip("findByIdWithMetrics returns RU", async () => {
     const { result, ru } = await products.findByIdWithMetrics("p1", ["electronics"]);
     expect(result).toBeDefined();
     expect(ru).toBeGreaterThan(0);

@@ -41,7 +41,14 @@ export function createTestClient(): CosmioClient {
  */
 export async function ensureTestDatabase(): Promise<void> {
   const cosmos = createEmulatorCosmosClient();
-  await cosmos.databases.createIfNotExists({ id: TEST_DATABASE });
+  try {
+    await cosmos.databases.createIfNotExists({ id: TEST_DATABASE });
+  } catch (e: unknown) {
+    // Ignore 409 (already exists) — can happen with parallel test files
+    if (typeof e === "object" && e !== null && "code" in e && (e as { code: unknown }).code === 409)
+      return;
+    throw e;
+  }
 }
 
 /**
