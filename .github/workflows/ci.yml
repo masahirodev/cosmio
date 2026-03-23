@@ -69,6 +69,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Use @azure/cosmos v3 for emulator compatibility
+        run: npm install @azure/cosmos@3.17.3 --save-dev --no-audit --no-fund
+
       - name: Wait for emulator
         run: |
           echo "Waiting for Cosmos DB emulator..."
