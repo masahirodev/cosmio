@@ -1,6 +1,19 @@
-import { type ContainerRequest, type Database, PartitionKeyKind } from "@azure/cosmos";
+import type { ContainerRequest, Database } from "@azure/cosmos";
 import type { z } from "zod";
 import type { ModelDefinition } from "../model/model-types.js";
+
+/**
+ * Build a partition key definition compatible with both @azure/cosmos v3 and v4.
+ * v4/vnext emulator requires `kind`, which doesn't exist in v3 types.
+ */
+function buildPartitionKeyDef(paths: string[]): Record<string, unknown> {
+  const def: Record<string, unknown> = {
+    paths: [...paths],
+    kind: paths.length > 1 ? "MultiHash" : "Hash",
+  };
+  if (paths.length > 1) def.version = 2;
+  return def;
+}
 
 export interface EnsureContainerOptions {
   /** Fixed throughput (RU/s). Mutually exclusive with maxThroughput. */
@@ -23,13 +36,10 @@ export async function ensureContainer<
   options?: EnsureContainerOptions,
 ): Promise<void> {
   const partitionKeyPaths = model.partitionKey as unknown as string[];
-  const containerDef: ContainerRequest = {
+  const containerDef = {
     id: model.container,
-    partitionKey:
-      partitionKeyPaths.length > 1
-        ? { paths: [...partitionKeyPaths], version: 2 as const, kind: PartitionKeyKind.MultiHash }
-        : { paths: [...partitionKeyPaths], kind: PartitionKeyKind.Hash },
-  };
+    partitionKey: buildPartitionKeyDef(partitionKeyPaths),
+  } as unknown as ContainerRequest;
 
   if (model.indexingPolicy) {
     containerDef.indexingPolicy = model.indexingPolicy;
