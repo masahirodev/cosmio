@@ -21,10 +21,10 @@ jobs:
           AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE: "false"
         options: >-
           --health-cmd "curl -fk https://localhost:8081/_explorer/emulator.pem"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 30
-          --health-start-period 60s
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 40
+          --health-start-period 120s
     env:
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
     steps:
