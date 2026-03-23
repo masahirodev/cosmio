@@ -97,33 +97,35 @@ function describeFieldType(type: z.ZodTypeAny): {
   typeName: string;
   isOptional: boolean;
 } {
-  if (type._def.typeName === "ZodOptional") {
-    const inner = describeFieldType(type._def.innerType);
+  const def = type._def as unknown as Record<string, unknown>;
+
+  if (def.type === "optional") {
+    const inner = describeFieldType(def.innerType as z.ZodTypeAny);
     return { ...inner, isOptional: true };
   }
-  if (type._def.typeName === "ZodNullable") {
-    const inner = describeFieldType(type._def.innerType);
+  if (def.type === "nullable") {
+    const inner = describeFieldType(def.innerType as z.ZodTypeAny);
     return { typeName: inner.typeName, isOptional: inner.isOptional };
   }
-  if (type._def.typeName === "ZodDefault") {
-    const inner = describeFieldType(type._def.innerType);
+  if (def.type === "default") {
+    const inner = describeFieldType(def.innerType as z.ZodTypeAny);
     return { ...inner, isOptional: true };
   }
 
   const typeMap: Record<string, string> = {
-    ZodString: "string",
-    ZodNumber: "number",
-    ZodBoolean: "boolean",
-    ZodDate: "datetime",
-    ZodArray: "array",
-    ZodObject: "object",
-    ZodEnum: "enum",
-    ZodLiteral: "string",
-    ZodUnion: "union",
-    ZodRecord: "object",
+    string: "string",
+    number: "number",
+    boolean: "boolean",
+    date: "datetime",
+    array: "array",
+    object: "object",
+    enum: "enum",
+    literal: "string",
+    union: "union",
+    record: "object",
   };
 
-  const typeName = typeMap[type._def.typeName as string] ?? "unknown";
+  const typeName = typeMap[def.type as string] ?? "unknown";
 
   return { typeName, isOptional: false };
 }
