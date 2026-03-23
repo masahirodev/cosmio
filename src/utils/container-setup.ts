@@ -1,4 +1,4 @@
-import type { ContainerRequest, Database } from "@azure/cosmos";
+import { type ContainerRequest, type Database, PartitionKeyKind } from "@azure/cosmos";
 import type { z } from "zod";
 import type { ModelDefinition } from "../model/model-types.js";
 
@@ -25,10 +25,10 @@ export async function ensureContainer<
   const partitionKeyPaths = model.partitionKey as unknown as string[];
   const containerDef: ContainerRequest = {
     id: model.container,
-    partitionKey: {
-      paths: [...partitionKeyPaths],
-      ...(partitionKeyPaths.length > 1 ? { version: 2 as const } : {}),
-    },
+    partitionKey:
+      partitionKeyPaths.length > 1
+        ? { paths: [...partitionKeyPaths], version: 2 as const, kind: PartitionKeyKind.MultiHash }
+        : { paths: [...partitionKeyPaths], kind: PartitionKeyKind.Hash },
   };
 
   if (model.indexingPolicy) {
