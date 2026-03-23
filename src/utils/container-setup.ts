@@ -4,7 +4,7 @@ import type { ModelDefinition } from "../model/model-types.js";
 
 /**
  * Build a partition key definition compatible with both @azure/cosmos v3 and v4.
- * v4/vnext emulator requires `kind`, which doesn't exist in v3 types.
+ * Uses Record<string, unknown> to bypass v3/v4 type differences for `kind`.
  */
 function buildPartitionKeyDef(paths: string[]): Record<string, unknown> {
   const def: Record<string, unknown> = {
