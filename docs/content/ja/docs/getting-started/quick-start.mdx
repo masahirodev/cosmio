@@ -1,0 +1,104 @@
+---
+title: クイックスタート
+description: 5分で最初のモデル定義から CRUD 操作まで
+---
+
+## 1. モデルを定義する
+
+DB 接続は不要です。純粋なデータ定義のみ。
+
+```ts twoslash
+import { defineModel } from "cosmio";
+import { z } from "zod";
+
+const TaskModel = defineModel({
+  name: "Task",
+  container: "tasks",
+  partitionKey: ["/projectId"],
+  schema: z.object({
+    id: z.string(),
+    projectId: z.string(),
+    title: z.string(),
+    status: z.string(),
+    priority: z.number(),
+    createdAt: z.number(),
+  }),
+  defaults: {
+    status: "open",
+    priority: 0,
+    createdAt: () => Math.floor(Date.now() / 1000),
+  },
+  description: "Project tasks",
+});
+
+// デフォルト値を持つフィールドは入力時にオプショナル
+type TaskInput = typeof TaskModel._types.input;
+//   ^?
+
+// 出力型では全フィールドが必須
+type TaskOutput = typeof TaskModel._types.output;
+//   ^?
+```
+
+## 2. Cosmos DB に接続する
+
+```ts
+import { CosmioClient, ensureContainer } from "cosmio";
+
+const client = new CosmioClient({
+  cosmos: { endpoint: "https://your-account.documents.azure.com:443/", key: "..." },
+  database: "mydb",
+});
+
+// コンテナの存在を確認
+await ensureContainer(client.database, TaskModel);
+
+// モデルをバインド → 型安全な操作
+const tasks = client.model(TaskModel);
+```
+
+## 3. 作成
+
+```ts
+// status, priority, createdAt はデフォルト値で自動補完
+const task = await tasks.create({
+  id: "task-1",
+  projectId: "proj-1",
+  title: "Implement login page",
+});
+// → { id: "task-1", projectId: "proj-1", title: "...", status: "open", priority: 0, createdAt: 1711... }
+```
+
+## 4. クエリ
+
+```ts
+// Prisma 風の where
+const openTasks = await tasks
+  .find(["proj-1"])
+  .where({
+    status: "open",
+    priority: { gte: 1 },
+  })
+  .orderBy("createdAt", "DESC")
+  .limit(20)
+  .exec();
+```
+
+## 5. 更新と削除
+
+```ts
+// Patch（部分更新）
+await tasks.patch("task-1", ["proj-1"], [
+  { op: "replace", path: "/status", value: "done" },
+]);
+
+// 削除
+await tasks.delete("task-1", ["proj-1"]);
+```
+
+## 次のステップ
+
+- [モデル定義](/ja/docs/models/define-model) — パーティションキー、ディスクリミネーター、コンテナ設定
+- [Where フィルタ](/ja/docs/queries/where-filters) — Prisma 風、クラシック、Raw SQL
+- [マイグレーション](/ja/docs/migrations/global-registry) — ダウンタイムなしのスキーマ進化
+- [アドバイザー](/ja/docs/advisor/analyzer) — パーティションキーとインデックスの最適化

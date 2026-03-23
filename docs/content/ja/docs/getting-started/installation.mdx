@@ -1,0 +1,42 @@
+---
+title: インストール
+description: Cosmio とピア依存関係のインストール方法
+---
+
+```bash
+npm install cosmio zod @azure/cosmos
+```
+
+`zod` と `@azure/cosmos` は**ピア依存関係**です。Cosmio と一緒にインストールしてください。
+
+## 動作要件
+
+- **Node.js** >= 22.22.0
+- **TypeScript** >= 5.5（推奨）
+- **@azure/cosmos** >= 4.0
+- **zod** >= 3.22
+
+## TypeScript 設定
+
+Cosmio の型推論をフルに活用するには、strict モードが必要です。`tsconfig.json` に以下を含めてください:
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "moduleResolution": "bundler"
+  }
+}
+```
+
+## ESM & CommonJS
+
+Cosmio は**デュアルパッケージ**として配布されており、ESM と CJS の両方をサポートしています:
+
+```ts
+// ESM（推奨）
+import { defineModel, CosmioClient } from "cosmio";
+
+// CommonJS
+const { defineModel, CosmioClient } = require("cosmio");
+```

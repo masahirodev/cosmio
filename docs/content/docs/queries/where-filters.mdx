@@ -1,0 +1,95 @@
+---
+title: Where Filters
+description: Three filter styles — Prisma-style objects, classic field/op/value, and raw SQL
+---
+
+The query builder's `where()` method supports three styles. You can mix and chain them.
+
+## 1. Prisma-Style Object (Recommended)
+
+Pass an object with field names and filter operators:
+
+```ts
+const results = await users
+  .find(["acme"])
+  .where({
+    name: { contains: "Alice" },
+    age: { gte: 18, lt: 65 },
+    status: "active",           // shorthand for { equals: "active" }
+    role: { not: "guest" },
+  })
+  .exec();
+```
+
+### String Operators
+
+| Operator | SQL Equivalent | Example |
+|----------|---------------|---------|
+| `equals` | `=` | `{ name: { equals: "Alice" } }` |
+| `not` | `!=` | `{ name: { not: "Bob" } }` |
+| `contains` | `CONTAINS()` | `{ name: { contains: "li" } }` |
+| `startsWith` | `STARTSWITH()` | `{ name: { startsWith: "A" } }` |
+| `endsWith` | `ENDSWITH()` | `{ email: { endsWith: "@acme.com" } }` |
+| `in` | `ARRAY_CONTAINS()` | `{ role: { in: ["admin", "editor"] } }` |
+
+### Number Operators
+
+| Operator | SQL Equivalent | Example |
+|----------|---------------|---------|
+| `equals` | `=` | `{ age: { equals: 25 } }` |
+| `not` | `!=` | `{ priority: { not: 0 } }` |
+| `gt` | `>` | `{ age: { gt: 18 } }` |
+| `gte` | `>=` | `{ age: { gte: 18 } }` |
+| `lt` | `<` | `{ age: { lt: 65 } }` |
+| `lte` | `<=` | `{ priority: { lte: 5 } }` |
+| `in` | `ARRAY_CONTAINS()` | `{ priority: { in: [1, 2, 3] } }` |
+
+### Boolean Operators
+
+| Operator | SQL Equivalent | Example |
+|----------|---------------|---------|
+| `equals` | `=` | `{ isAdmin: { equals: true } }` |
+| `not` | `!=` | `{ isAdmin: { not: false } }` |
+
+## 2. Classic Style
+
+Pass field name, operator, and value as separate arguments:
+
+```ts
+const results = await users
+  .find(["acme"])
+  .where("name", "CONTAINS", "Alice")
+  .where("age", ">=", 18)
+  .where("status", "=", "active")
+  .exec();
+```
+
+Available operators: `=`, `!=`, `<`, `>`, `<=`, `>=`, `CONTAINS`, `STARTSWITH`, `ENDSWITH`, `ARRAY_CONTAINS`.
+
+## 3. Raw SQL (whereRaw)
+
+For expressions not covered by the typed API:
+
+```ts
+const results = await users
+  .find(["acme"])
+  .whereRaw("ST_DISTANCE(c.location, @center) < @radius", {
+    "@center": { type: "Point", coordinates: [139.7, 35.6] },
+    "@radius": 1000,
+  })
+  .whereRaw("IS_DEFINED(c.metadata)")
+  .exec();
+```
+
+## Mixing Styles
+
+All three styles can be combined in a single query. Conditions are joined with `AND`:
+
+```ts
+const results = await users
+  .find(["acme"])
+  .where({ role: "member" })
+  .where("age", ">=", 18)
+  .whereRaw("ARRAY_LENGTH(c.tags) > @min", { "@min": 0 })
+  .exec();
+```

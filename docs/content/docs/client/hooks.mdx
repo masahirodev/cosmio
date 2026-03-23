@@ -1,0 +1,88 @@
+---
+title: Lifecycle Hooks
+description: Middleware hooks for audit, encryption, caching, and more
+---
+
+Register hooks on a `CosmioContainer` to run logic before or after operations. Hooks run in registration order and can be async.
+
+## Available Events
+
+| Event | Timing | Use Case |
+|-------|--------|----------|
+| `beforeCreate` | Before create write | Set audit fields, encrypt data |
+| `afterCreate` | After create write | Send notifications, update cache |
+| `beforeUpsert` | Before upsert write | Validate business rules |
+| `afterUpsert` | After upsert write | Sync external systems |
+| `beforeReplace` | Before replace write | Check permissions |
+| `afterReplace` | After replace write | Invalidate cache |
+| `beforeDelete` | Before delete | Archive document |
+| `afterDelete` | After delete | Cleanup related data |
+| `afterRead` | After read (findById) | Decrypt fields, transform data |
+
+## Registering Hooks
+
+```ts
+const users = client.model(UserModel);
+
+users.use("beforeCreate", (doc) => {
+  doc.createdAt = Date.now();
+  doc.createdBy = getCurrentUserId();
+});
+
+users.use("beforeUpsert", (doc) => {
+  doc.updatedAt = Date.now();
+});
+```
+
+## Async Hooks
+
+Hooks can return a `Promise`:
+
+```ts
+users.use("afterCreate", async (doc) => {
+  await sendWelcomeEmail(doc.email as string);
+});
+```
+
+## Decryption on Read
+
+```ts
+users.use("afterRead", (doc) => {
+  doc.ssn = decrypt(doc.ssn as string);
+});
+```
+
+## Audit Trail
+
+```ts
+users.use("beforeCreate", (doc) => {
+  doc.audit = { createdAt: Date.now(), createdBy: ctx.userId };
+});
+
+users.use("beforeReplace", (doc) => {
+  doc.audit = {
+    ...(doc.audit as object),
+    updatedAt: Date.now(),
+    updatedBy: ctx.userId,
+  };
+});
+```
+
+## Multiple Hooks
+
+You can register multiple hooks for the same event. They execute in order:
+
+```ts
+users
+  .use("beforeCreate", validateBusinessRules)
+  .use("beforeCreate", setAuditFields)
+  .use("beforeCreate", encryptSensitiveFields);
+```
+
+## Hook Signature
+
+```ts
+type HookFn = (doc: Record<string, unknown>) => void | Promise<void>;
+```
+
+Hooks receive the document as a mutable object. Modify it in-place -- there is no need to return a value.

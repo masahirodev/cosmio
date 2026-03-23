@@ -1,0 +1,81 @@
+---
+title: Cosmio
+description: Azure Cosmos DB 向けの型安全なモデル定義＆操作ライブラリ
+---
+
+**Zod** を活用した、**Azure Cosmos DB** 向けの型安全なモデル定義＆操作ライブラリです。
+
+## 主な機能
+
+- **型安全なモデル** — Zod スキーマで Cosmos DB モデルを定義し、TypeScript の型推論をフル活用
+- **階層パーティションキー** — 自動推論付きの型安全な PK タプル
+- **Prisma 風クエリ** — オートコンプリート対応のオブジェクトベース `where` フィルタ
+- **DTO プロジェクション** — 名前付き omit/pick DTO、型安全なクエリ統合、グローバルポリシー
+- **SELECT プロジェクション** — 特定フィールドのみ取得して RU を削減
+- **デフォルト値** — 静的値またはファクトリ関数による create/upsert 時の自動補完
+- **論理削除** — 自動除外とリストア機能付きの論理削除
+- **バルク操作** — バリデーション・ソフトデリート対応のバッチ create/upsert/delete
+- **RU メトリクス** — 全操作の WithMetrics バリアントで Request Unit 消費量を監視
+- **マイグレーション** — グローバルレジストリまたはモデル単位の読み取り時変換
+- **フック** — 監査、暗号化、キャッシュのためのライフサイクルミドルウェア
+- **トランザクション** — パーティション内のアトミックなバッチ操作
+- **リポジトリパターン** — CRUD 上にカスタムビジネスロジックメソッドを追加
+- **リクエストスコープキャッシュ** — 繰り返しのポイントリードで RU を削減
+- **Azure Functions 統合** — AsyncLocalStorage による自動 per-invocation キャッシュ（v3 + v4）
+- **DB からモデル生成** — コンテナを解析してモデル定義を自動生成（`cosmio pull`）
+- **設定ファイル** — `cosmio.config.ts` でプロジェクト全体の接続設定と pull ターゲットを管理
+- **スキーマ生成** — JSON Schema, OpenAPI 3.1, Markdown, Mermaid ダイアグラム
+- **アドバイザー** — ルールベース分析＋Azure Advisor カテゴリによる AI 最適化
+- **デザインパターン** — アクセスパターンに基づく公式 Cosmos DB デザインパターンの推奨
+- **CLI** — ドキュメント生成とモデル pull をコマンドラインから実行
+
+## クイックサンプル
+
+```ts
+import { defineModel, CosmioClient } from "cosmio";
+import { z } from "zod";
+
+const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    email: z.string().email(),
+    role: z.string(),
+    createdAt: z.number(),
+  }),
+  defaults: {
+    role: "member",
+    createdAt: () => Math.floor(Date.now() / 1000),
+  },
+});
+
+const client = new CosmioClient({
+  cosmos: { endpoint: "https://...", key: "..." },
+  database: "mydb",
+});
+
+const users = client.model(UserModel);
+
+// Create — role と createdAt は自動補完
+await users.create({
+  id: "u1",
+  tenantId: "acme",
+  name: "Alice",
+  email: "alice@acme.com",
+});
+
+// Query — Prisma 風の where
+const results = await users
+  .find(["acme"])
+  .where({
+    name: { contains: "Ali" },
+    role: "member",
+  })
+  .orderBy("createdAt", "DESC")
+  .limit(10)
+  .exec();
+```

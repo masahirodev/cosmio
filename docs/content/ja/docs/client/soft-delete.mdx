@@ -1,0 +1,91 @@
+---
+title: 論理削除
+description: 自動除外、リストア、物理削除を備えた論理削除機能
+---
+
+論理削除は、ドキュメントを物理的に削除する代わりに、削除済みとしてマークします。モデル定義で設定します。
+
+## 設定
+
+```ts
+const TaskModel = defineModel({
+  name: "Task",
+  container: "tasks",
+  partitionKey: ["/projectId"],
+  schema: z.object({
+    id: z.string(),
+    projectId: z.string(),
+    title: z.string(),
+    deletedAt: z.number().optional(),
+  }),
+  softDelete: {
+    field: "deletedAt",      // 削除タイムスタンプを格納するフィールド
+    autoExclude: true,       // デフォルト: true — クエリから自動除外
+  },
+});
+```
+
+## delete()
+
+論理削除が設定されている場合、`delete()` はパッチ操作でタイムスタンプフィールドを設定します:
+
+```ts
+const tasks = client.model(TaskModel);
+await tasks.delete("t1", ["proj-1"]);
+// ドキュメントに deletedAt: 1711234567890 が設定される
+```
+
+## hardDelete()
+
+論理削除をバイパスしてドキュメントを物理削除:
+
+```ts
+await tasks.hardDelete("t1", ["proj-1"]);
+```
+
+## restore()
+
+削除タイムスタンプを除去して、論理削除されたドキュメントを復元:
+
+```ts
+const restored = await tasks.restore("t1", ["proj-1"]);
+```
+
+## クエリでの自動除外
+
+`autoExclude: true`（デフォルト）の場合、`find()`、`findById()`、クエリビルダーは論理削除されたドキュメントを自動的にフィルタリングします:
+
+```ts
+// 削除されていないタスクのみ返される
+const results = await tasks.find(["proj-1"]).exec();
+
+// findById は論理削除されたドキュメントに対して undefined を返す
+const task = await tasks.findById("t1", ["proj-1"]); // 削除済みなら undefined
+```
+
+## findWithDeleted()
+
+論理削除されたドキュメントを含めてクエリ:
+
+```ts
+const all = await tasks.findWithDeleted(["proj-1"]).exec();
+// アクティブなドキュメントと論理削除されたドキュメントの両方を返す
+```
+
+## TTL との組み合わせ
+
+`defaultTtl` を使って、保持期間後に論理削除されたドキュメントを自動パージ:
+
+```ts
+const TaskModel = defineModel({
+  // ...
+  softDelete: { field: "deletedAt" },
+  defaultTtl: -1, // コンテナの TTL を有効化
+});
+
+// 削除時に ttl も設定して30日後に自動パージ
+await tasks.patch("t1", ["proj-1"], [
+  { op: "set", path: "/deletedAt", value: Date.now() },
+  { op: "set", path: "/ttl", value: 2592000 },
+]);
+```

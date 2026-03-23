@@ -1,0 +1,85 @@
+---
+title: AI 最適化
+description: Claude/GPTでCosmos DBモデルを最適化するための構造化プロンプト生成
+---
+
+`generateAdvisorPrompt()` は、Claude、GPT、その他のLLMに送信してエキスパートレベルのCosmos DB最適化アドバイスを得るための構造化プロンプトを生成します。
+
+## 基本的な使い方
+
+```ts
+import { analyzeModels, generateAdvisorPrompt } from "cosmio";
+
+const modelsWithPatterns = [
+  { model: UserModel, patterns: [/* ... */] },
+  { model: OrderModel, patterns: [/* ... */] },
+];
+
+// まずルールベース分析を実行
+const report = analyzeModels(modelsWithPatterns);
+
+// モデル、パターン、分析結果を含む構造化プロンプトを生成
+const prompt = generateAdvisorPrompt(modelsWithPatterns, report);
+```
+
+## Claude（Anthropic）との連携
+
+```ts
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = new Anthropic();
+
+const response = await anthropic.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 4096,
+  messages: [{ role: "user", content: prompt }],
+});
+
+console.log(response.content[0].text);
+```
+
+## OpenAIとの連携
+
+```ts
+import OpenAI from "openai";
+
+const openai = new OpenAI();
+
+const response = await openai.chat.completions.create({
+  model: "gpt-4o",
+  messages: [{ role: "user", content: prompt }],
+});
+
+console.log(response.choices[0].message.content);
+```
+
+## プロンプトの内容
+
+生成されるプロンプトには以下が含まれます：
+
+1. **システムコンテキスト** -- AIにCosmos DBエキスパートとして振る舞うよう指示
+2. **デザインパターンリファレンス** -- 9つの公式Cosmos DBパターンをルックアップテーブルとして
+3. **モデル定義** -- JSON Schema、パーティションキー、インデックスポリシー
+4. **アクセスパターン** -- 操作、RPS、ドキュメントサイズ、クエリフィールド
+5. **共有コンテナ** -- シングルテーブル設計の関係
+6. **自動分析結果** -- 発見事項、RU見積もり、コスト内訳
+7. **構造化出力リクエスト** -- Azure Advisorフォーマットでの推奨を要求
+
+## AIレスポンスフォーマット
+
+プロンプトは5つのAzure Advisorカテゴリでの回答を要求します：
+
+1. **コスト** -- RU最適化、スループットモード、月額見積もり
+2. **パフォーマンス** -- パーティションキー評価、インデックス推奨、デザインパターン
+3. **信頼性** -- 整合性、バックアップ、マルチリージョン
+4. **セキュリティ** -- 機密フィールドの取り扱い、アクセス制御
+5. **運用効率** -- TTL、監視、スキーマ進化
+
+## 事前分析なしでの使用
+
+ルールベース分析をスキップして、AIに全てを任せることもできます：
+
+```ts
+const prompt = generateAdvisorPrompt(modelsWithPatterns);
+// reportを渡さない — AIがゼロから分析
+```

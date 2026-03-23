@@ -1,0 +1,90 @@
+---
+title: Connection
+description: CosmioClient connection methods, singleton behavior, and disposal
+---
+
+`CosmioClient` wraps the Azure `CosmosClient` and provides type-safe model binding.
+
+## Three Connection Methods
+
+### 1. Endpoint + Key
+
+```ts
+import { CosmioClient } from "cosmio";
+
+const client = new CosmioClient({
+  cosmos: {
+    endpoint: "https://your-account.documents.azure.com:443/",
+    key: "your-primary-key",
+  },
+  database: "mydb",
+});
+```
+
+### 2. Connection String
+
+```ts
+const client = new CosmioClient({
+  cosmos: {
+    connectionString: "AccountEndpoint=https://...;AccountKey=...;",
+  },
+  database: "mydb",
+});
+```
+
+### 3. Pre-built CosmosClient
+
+Bring your own `CosmosClient` for custom configuration (e.g., AAD auth):
+
+```ts
+import { CosmosClient } from "@azure/cosmos";
+
+const cosmosClient = new CosmosClient({
+  endpoint: "https://...",
+  aadCredentials: new DefaultAzureCredential(),
+});
+
+const client = new CosmioClient({
+  cosmos: { client: cosmosClient },
+  database: "mydb",
+});
+```
+
+## Singleton Behavior
+
+Azure recommends a single `CosmosClient` per application. Cosmio enforces this by default -- calling `new CosmioClient(...)` with the same endpoint + database returns the **same instance**:
+
+```ts
+const a = new CosmioClient({ cosmos: { endpoint: "...", key: "..." }, database: "mydb" });
+const b = new CosmioClient({ cosmos: { endpoint: "...", key: "..." }, database: "mydb" });
+a === b; // true
+```
+
+Opt out for tests:
+
+```ts
+const client = new CosmioClient(options, { singleton: false });
+```
+
+## Binding Models
+
+```ts
+const users = client.model(UserModel); // returns CosmioContainer
+```
+
+The same model always returns the same `CosmioContainer` instance.
+
+## dispose()
+
+Remove the instance from the singleton cache on shutdown or in test teardown:
+
+```ts
+client.dispose();
+```
+
+## Raw Access
+
+```ts
+client.raw;       // underlying CosmosClient
+client.database;  // Database reference
+```

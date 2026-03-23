@@ -1,0 +1,305 @@
+---
+title: なぜ Cosmio なのか
+description: チーム開発で Azure Cosmos DB を使う際にぶち当たる4つの課題と、Cosmio がどう解決するか
+---
+
+Cosmio は、チームで Azure Cosmos DB アプリケーションを開発する際に必ずぶち当たる **4つの具体的な課題** を解決するために作られました。ORM 的な CRUD 層はおまけ — 本当の価値は、データ層を **見える化し、型安全にし、変更に強くし、高速にする** ことです。
+
+---
+
+## 課題 1: 「データの構造がわからない」
+
+### 痛み
+
+Cosmos DB はスキーマレス。チーム開発ではこれが負債になる:
+
+- 新しいメンバーが `inspections` コンテナにどんなフィールドがあるのかわからない
+- 誰かがコードでフィールドを追加したがチームに伝えない → 半分の読み取りが壊れる
+- データモデルの「正」がどこにもない
+- PR レビューでデータ形状の問題を検出できない — diff する対象がない
+
+### 解決策: モデル = ドキュメント
+
+`defineModel()` が **唯一の正** となる。
+
+```ts
+const InspectionModel = defineModel({
+  name: "Inspection",
+  container: "inspections",
+  partitionKey: ["/tenantId", "/siteId"],
+  schema: z.object({
+    id: z.string().describe("一意な点検ID"),
+    tenantId: z.string().describe("テナントパーティションキー"),
+    siteId: z.string().describe("サイトパーティションキー"),
+    type: z.literal("inspection").describe("ドキュメントタイプ識別子"),
+    name: z.string().describe("点検名"),
+    status: z.enum(["draft", "in_progress", "completed"]).describe("現在のステータス"),
+    assigneeId: z.string().optional().describe("担当者ユーザーID"),
+    score: z.number().min(0).max(100).optional().describe("点検スコア (0-100)"),
+    completedAt: z.number().optional().describe("完了日時 (unixtime秒)"),
+    createdAt: z.number().describe("作成日時 (unixtime秒)"),
+  }),
+  discriminator: { field: "type", value: "inspection" },
+  description: "スコアリング付きサイト点検記録",
+});
+```
+
+この 1 つの定義から得られるもの:
+
+| 得られるもの | 方法 |
+|-------------|------|
+| **型安全性** | `typeof InspectionModel._types.output` で TypeScript 型推論 |
+| **フィールド説明** | `InspectionModel.fieldDescriptions` でランタイムアクセス |
+| **Markdown ドキュメント** | `toMarkdownDoc([InspectionModel])` で自動生成 |
+| **JSON Schema** | `toJsonSchema(InspectionModel)` で外部ツール連携 |
+| **OpenAPI 仕様** | `toOpenAPI([InspectionModel])` で API 消費者向け |
+| **ER 図** | `toMermaidER([InspectionModel])` でコンテナ構成を可視化 |
+| **CLI 生成** | `cosmio docs --format=markdown` で CI ビルド時に再生成 |
+
+**チームへの影響:** 新メンバーはモデルファイルを読めば即データ構造を理解。スキーマ変更の PR は diff が明確。
+
+---
+
+## 課題 2: 「3フィールドだけ欲しいのに、全ドキュメントを引いてる」
+
+### 痛み
+
+Cosmos DB は文書サイズで RU を消費する。実際のアプリケーションでは:
+
+- 一覧画面で必要なのは `id`, `name`, `status` だけ — でも 50 フィールド全部読んでる
+- TypeScript が `any` か全フィールドの型しかくれない — 「この 3 フィールドだけ」を型で表現できない
+- コールスタック全体にフルドキュメントを渡す → すべてがフルスキーマに結合
+- フェッチしていないフィールドにアクセスしてもコンパイル時に検出できない
+
+### 解決策: 型安全プロジェクション + Prisma 風クエリ
+
+```ts
+// 必要なフィールドだけフェッチ — 型が自動的に絞られる
+const listItems = await inspections
+  .find(["tenant1", "site1"])
+  .where({ status: "in_progress" })
+  .select("id", "name", "status", "assigneeId")
+  .orderBy("createdAt", "DESC")
+  .limit(20)
+  .exec();
+
+// TypeScript が知っている型: { id: string; name: string; status: string; assigneeId?: string }[]
+// 50フィールドの完全なドキュメントではない — RU 節約 + 結合防止
+
+listItems[0].name;     // ✅ string
+listItems[0].score;    // ❌ TypeScript エラー — プロジェクションに含まれていない
+```
+
+3 つのクエリスタイル:
+
+```ts
+// Prisma 風 — 最高の補完、型安全な演算子
+await inspections.find(["t1", "s1"]).where({
+  status: "completed",
+  score: { gte: 80 },
+  name: { contains: "定期" },
+}).exec();
+
+// クラシック — シンプルで読みやすい
+await inspections.find(["t1", "s1"]).where("status", "=", "completed").exec();
+
+// Cosmos DB ネイティブ — geo クエリ、UDF、複雑な式
+await inspections.find(["t1", "s1"])
+  .whereRaw("ST_DISTANCE(c.location, @center) < @radius", {
+    "@center": { type: "Point", coordinates: [139.7, 35.6] },
+    "@radius": 1000,
+  }).exec();
+```
+
+**チームへの影響:** 開発者は必要なものだけフェッチ。TypeScript がフィールド不足バグをコンパイル時にキャッチ。RU コスト自然削減。
+
+---
+
+## 課題 3: 「スキーマを変えたいが、マイグレーションができない」
+
+### 痛み
+
+Cosmos DB に `ALTER TABLE` はない。スキーマが進化すると:
+
+- DB 内の古いドキュメントは旧形式のまま — 永遠に
+- コードで新旧両方の形式を同時に扱う必要がある
+- ドキュメントが「どのバージョン」なのか知る手段がない
+- チームメンバーがそれぞれ違う場所に違うマイグレーションロジックを書く
+- 一部のドキュメントだけマイグレーション済み — 不整合が広がる
+
+### 解決策: 集中管理された読み取り時マイグレーション
+
+**1 箇所で定義、全箇所で自動適用。**
+
+```ts
+// migrations.ts — 1ファイル、チーム全員がレビュー
+import { MigrationRegistry } from "cosmio";
+
+export const migrations = new MigrationRegistry({ versionField: "_v" });
+
+// v2: firstName + lastName → fullName に統合
+migrations.register({
+  name: "v2-merge-name",
+  version: 2,
+  up: (doc) => {
+    if (doc.firstName && !doc.fullName) {
+      doc.fullName = `${doc.firstName} ${doc.lastName}`;
+      delete doc.firstName;
+      delete doc.lastName;
+    }
+    return doc;
+  },
+});
+
+// v3: デフォルト role 追加（User モデルのみ）
+migrations.register({
+  name: "v3-default-role",
+  version: 3,
+  scope: { models: ["User"] },
+  up: (doc) => {
+    if (!doc.role) doc.role = "member";
+    return doc;
+  },
+});
+
+// v4: "score" → "rating" にリネーム（inspections コンテナのみ）
+migrations.register({
+  name: "v4-rename-score",
+  version: 4,
+  scope: { containers: ["inspections"] },
+  up: (doc) => {
+    if (doc.score !== undefined && doc.rating === undefined) {
+      doc.rating = doc.score;
+      delete doc.score;
+    }
+    return doc;
+  },
+});
+```
+
+```ts
+// app.ts — 1行で全モデルに適用
+const client = new CosmioClient({
+  cosmos: { endpoint: "...", key: "..." },
+  database: "mydb",
+  migrations, // ← 全読み取りで自動マイグレーション
+});
+```
+
+**動作の仕組み:**
+
+1. 各ドキュメントに `_v`（バージョン）フィールドを追跡
+2. 読み取り時、ドキュメントのバージョンより新しいマイグレーションだけ適用
+3. バージョンはメモリ上で更新（デフォルトでは DB に書き戻さない）
+4. オプション: read-repair パターンで段階的に永続化
+
+```ts
+// Read-repair: 古いドキュメントを段階的に修正
+const user = await users.findById("u1", ["t1"]);
+if (user && (user as Record<string, unknown>)._v < migrations.currentVersion) {
+  await users.upsert(user); // 新スキーマ + 更新された _v で書き戻し
+}
+```
+
+**チームへの影響:** マイグレーションファイルがリポジトリに 1 つ。全メンバーのコードが同じ形式を読む。「古い形式のハンドリング忘れ」バグがなくなる。
+
+---
+
+## 課題 4: 「毎リクエスト DB にアクセスしてる — キャッシュは難しい」
+
+### 痛み
+
+複雑なアプリケーションでは、同じデータがリクエストごとに何度も読まれる:
+
+- 認証ミドルウェアがユーザーを読む → コントローラーが同じユーザーを読む → サービスが同じユーザーを読む
+- 一覧画面でアイテムを取得、その後各アイテムの関連データを取得 (N+1)
+- 開発者が `Map` や Redis で手動キャッシュ → どこでも不整合
+- キャッシュ無効化が間違い → 古いデータでバグ
+- Azure Functions ではキャッシュは invocation ごとにすべき — グローバルではない
+
+### 解決策: 自動リクエストスコープキャッシュ
+
+設定不要。Azure Functions v3/v4 および任意のフレームワークで動作。
+
+```ts
+// Azure Functions v4 — エントリポイントで1行
+import { app } from "@azure/functions";
+import { cosmioHooks } from "cosmio";
+
+cosmioHooks(app); // ← 全 Function に invocation 単位キャッシュ
+```
+
+```ts
+// 任意の Function 内 — キャッシュは自動
+app.http("getInspectionDetails", {
+  handler: async (req, context) => {
+    // この3回の呼び出しは DB に1回だけアクセス:
+    const inspection = await inspections.findById("insp-1", ["t1", "s1"]);
+    const inspection2 = await inspections.findById("insp-1", ["t1", "s1"]); // キャッシュ
+    const inspection3 = await inspections.findById("insp-1", ["t1", "s1"]); // キャッシュ
+
+    // クエリ結果も同一 invocation 内でキャッシュ:
+    const related = await checklists.find(["t1", "s1"])
+      .where({ inspectionId: "insp-1" }).exec();           // DB アクセス
+    const related2 = await checklists.find(["t1", "s1"])
+      .where({ inspectionId: "insp-1" }).exec();           // キャッシュ
+
+    // 書き込みはキャッシュを自動無効化（point-read + クエリ両方）:
+    await inspections.patch("insp-1", ["t1", "s1"], [
+      { op: "replace", path: "/status", value: "completed" },
+    ]);
+    // 次の読み取りは DB にアクセス（キャッシュ無効化済み）
+    const fresh = await inspections.findById("insp-1", ["t1", "s1"]); // DB アクセス
+
+    return { jsonBody: inspection };
+  },
+});
+```
+
+```ts
+// Azure Functions v3
+import { cosmioV3 } from "cosmio";
+
+module.exports = cosmioV3(async function (context, req) {
+  const user = await users.findById("u1", ["t1"]);
+  const user2 = await users.findById("u1", ["t1"]); // キャッシュ (0 RU)
+});
+```
+
+```ts
+// Express / Hono / 任意のフレームワーク
+import { withCosmioContext } from "cosmio";
+
+app.use((req, res, next) => {
+  withCosmioContext(() => next()); // このリクエストにキャッシュスコープ
+});
+```
+
+**内部の仕組み:**
+
+- `AsyncLocalStorage`（Node.js 組み込み）で invocation ごとのスコープを作成
+- Point read: `コンテナ + id + パーティションキー` でキャッシュ
+- クエリ結果: `コンテナ + SQL + パラメータ + パーティションキー` でキャッシュ
+- 書き込み（`create`, `upsert`, `replace`, `delete`, `patch`）時に自動無効化:
+  - 該当の point-read キャッシュエントリ
+  - そのコンテナの全クエリキャッシュ（変更されたドキュメントがクエリ結果に含まれる可能性）
+- キャッシュ値は `structuredClone` でディープコピー（mutation 汚染防止）
+- invocation 終了時にキャッシュ全体が GC
+
+**チームへの影響:** 開発者は素直なコードを書くだけ。手動キャッシュ管理不要。古いデータバグなし。RU コストが自動で下がる。
+
+---
+
+## Cosmio が「ない」もの
+
+Cosmio はフル ORM を目指していません。Cosmos DB を抽象化の裏に隠しません。
+
+| Cosmio がやること | Cosmio がやらないこと |
+|------------------|---------------------|
+| データモデルを見える化・ドキュメント化する | Cosmos DB の概念を抽象化する |
+| スキーマレスデータに型安全性を追加する | コンテナ生成やインフラ管理をする |
+| DB レベルのサポートなしでマイグレーションする | クロスコンテナ JOIN やリレーションをサポートする |
+| リクエスト単位で読み取りを透過的にキャッシュする | Redis や分散キャッシュを置き換える |
+| `raw` で SDK への完全アクセスを提供する | 独自のクエリ言語にロックインする |
+
+CRUD レイヤー、クエリビルダー、フック、論理削除、リポジトリパターンは便利機能です。**コアの価値** は上記 4 つの課題を解決することです。

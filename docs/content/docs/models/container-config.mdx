@@ -1,0 +1,100 @@
+---
+title: Container Configuration
+description: TTL, unique keys, conflict resolution, indexing policy, and ensureContainer()
+---
+
+Model definitions can include Cosmos DB container-level settings. These are applied when you call `ensureContainer()`.
+
+## TTL (Time to Live)
+
+```ts
+const EventModel = defineModel({
+  name: "Event",
+  container: "events",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    action: z.string(),
+    ttl: z.number().optional(),
+  }),
+  defaultTtl: 2592000, // 30 days in seconds
+});
+```
+
+Set `defaultTtl: -1` to enable TTL on the container without a default expiry. Individual documents can set their own `ttl` field.
+
+## Unique Key Policy
+
+```ts
+const UserModel = defineModel({
+  // ...
+  uniqueKeyPolicy: {
+    uniqueKeys: [
+      { paths: ["/email"] },
+      { paths: ["/tenantId", "/username"] },
+    ],
+  },
+});
+```
+
+Unique keys are enforced within a logical partition. Two documents in different partitions can share the same unique key values.
+
+## Conflict Resolution Policy
+
+For multi-region write scenarios:
+
+```ts
+const OrderModel = defineModel({
+  // ...
+  conflictResolutionPolicy: {
+    mode: "LastWriterWins",
+    conflictResolutionPath: "/_ts",
+  },
+});
+```
+
+## Indexing Policy
+
+```ts
+const InspectionModel = defineModel({
+  // ...
+  indexingPolicy: {
+    indexingMode: "consistent",
+    includedPaths: [{ path: "/*" }],
+    excludedPaths: [
+      { path: "/body/*" },
+      { path: '/"_etag"/?' },
+    ],
+    compositeIndexes: [
+      [
+        { path: "/status", order: "ascending" },
+        { path: "/createdAt", order: "descending" },
+      ],
+    ],
+  },
+});
+```
+
+## ensureContainer()
+
+Creates the container if it does not exist, applying all settings from the model:
+
+```ts
+import { ensureContainer, ensureContainers } from "cosmio";
+
+// Single model
+await ensureContainer(client.database, UserModel);
+
+// With throughput options
+await ensureContainer(client.database, UserModel, {
+  maxThroughput: 4000, // autoscale up to 4000 RU/s
+});
+
+// Multiple models (deduplicates by container name)
+await ensureContainers(client.database, [
+  ArticleModel,
+  CommentModel,
+  UserModel,
+]);
+```

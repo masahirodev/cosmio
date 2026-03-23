@@ -1,0 +1,88 @@
+---
+title: Markdown
+description: モデル定義からMarkdownドキュメントを生成
+---
+
+Cosmioモデルから人間が読みやすいMarkdownドキュメントを生成します。
+
+## 単一モデル
+
+```ts
+import { toMarkdown } from "cosmio";
+
+const md = toMarkdown(UserModel);
+console.log(md);
+```
+
+出力：
+
+```markdown
+## User
+
+Application users
+
+**Container:** `users`
+**Partition Key:** `/tenantId`
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | |
+| `tenantId` | string | Yes | |
+| `name` | string | Yes | |
+| `email` | string | Yes | |
+| `age` | number | No | |
+```
+
+## 複数モデル
+
+タイトル付きの完全なドキュメントページを生成します：
+
+```ts
+import { toMarkdownDoc } from "cosmio";
+
+const doc = toMarkdownDoc([UserModel, OrderModel, TaskModel], {
+  title: "Data Models",
+});
+```
+
+## フィールド型マッピング
+
+Zod型は読みやすい名前にマッピングされます：
+
+| Zod型 | Markdown型 |
+|-------|-----------|
+| `z.string()` | string |
+| `z.number()` | number |
+| `z.boolean()` | boolean |
+| `z.date()` | Date |
+| `z.array()` | array |
+| `z.object()` | object |
+| `z.enum()` | enum |
+| `z.literal("x")` | `"x"` |
+| `z.string().optional()` | string (Required: No) |
+
+## ディスクリミネータ注釈
+
+ディスクリミネータを持つモデルは出力に含まれます：
+
+```markdown
+**Discriminator:** `type` = `"article"`
+```
+
+## CLI
+
+```bash
+npx cosmio docs --format=markdown src/models/*.ts
+npx cosmio docs --format=markdown --output=models.md src/models/*.ts
+```
+
+## プログラム的な書き出し
+
+```ts
+import { writeFileSync } from "node:fs";
+
+const doc = toMarkdownDoc([UserModel, OrderModel]);
+writeFileSync("models.md", doc);
+```

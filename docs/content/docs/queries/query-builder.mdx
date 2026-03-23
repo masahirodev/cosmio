@@ -1,0 +1,102 @@
+---
+title: Query Builder
+description: Fluent API for building type-safe Cosmos DB queries
+---
+
+The query builder provides a fluent, chainable API for constructing Cosmos DB SQL queries with full type safety.
+
+## Starting a Query
+
+```ts
+const users = client.model(UserModel);
+
+// Scoped to a partition key (recommended for performance)
+const results = await users.find(["acme"]).exec();
+
+// Cross-partition query (no partition key)
+const allUsers = await users.find().exec();
+```
+
+## Fluent API
+
+### where()
+
+Add filter conditions. Supports [three styles](/docs/queries/where-filters):
+
+```ts
+users.find(["acme"])
+  .where({ name: { contains: "Ali" }, role: "admin" })
+  .exec();
+```
+
+### orderBy()
+
+```ts
+users.find(["acme"])
+  .orderBy("createdAt", "DESC")
+  .orderBy("name", "ASC")
+  .exec();
+```
+
+### limit()
+
+```ts
+users.find(["acme"])
+  .limit(20)
+  .exec();
+```
+
+### offset()
+
+```ts
+users.find(["acme"])
+  .offset(20)
+  .limit(20)
+  .exec();
+```
+
+## Full Example
+
+```ts
+const results = await users
+  .find(["acme"])
+  .where({
+    role: "member",
+    createdAt: { gte: 1700000000 },
+    name: { startsWith: "A" },
+  })
+  .orderBy("createdAt", "DESC")
+  .limit(10)
+  .offset(0)
+  .exec();
+```
+
+## Inspecting the Generated Query
+
+Use `toQuerySpec()` to see the SQL that will be sent to Cosmos DB:
+
+```ts
+const builder = users
+  .find(["acme"])
+  .where({ role: "admin" })
+  .orderBy("createdAt", "DESC")
+  .limit(5);
+
+console.log(builder.toQuerySpec());
+// {
+//   query: "SELECT TOP 5 * FROM c WHERE c.role = @p0 ORDER BY c.createdAt DESC",
+//   parameters: [{ name: "@p0", value: "admin" }]
+// }
+```
+
+## Combining with whereRaw()
+
+Mix typed filters with raw SQL for advanced expressions:
+
+```ts
+const results = await users
+  .find(["acme"])
+  .where({ role: "member" })
+  .whereRaw("ARRAY_LENGTH(c.tags) > @minTags", { "@minTags": 2 })
+  .exec();
+```

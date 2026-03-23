@@ -1,0 +1,126 @@
+---
+title: Metrics (WithMetrics)
+description: Track RU consumption per operation with WithMetrics variants
+---
+
+Cosmio provides `WithMetrics` variants of core operations that return the result alongside the Request Unit (RU) charge from Cosmos DB.
+
+```ts
+const users = client.model(UserModel);
+```
+
+## WithMetrics\<T\> Type
+
+Every metrics variant returns an object with this shape:
+
+```ts
+interface WithMetrics<T> {
+  result: T;
+  /** Request Units consumed by this operation */
+  ru: number;
+}
+```
+
+## Available Methods
+
+### createWithMetrics()
+
+```ts
+const { result: user, ru } = await users.createWithMetrics({
+  id: "u1",
+  tenantId: "acme",
+  name: "Alice",
+  email: "alice@acme.com",
+});
+console.log(`Created user, cost: ${ru} RU`);
+```
+
+### findByIdWithMetrics()
+
+```ts
+const { result: user, ru } = await users.findByIdWithMetrics("u1", ["acme"]);
+if (user) {
+  console.log(`Read user, cost: ${ru} RU`);
+}
+```
+
+### upsertWithMetrics()
+
+```ts
+const { result: user, ru } = await users.upsertWithMetrics({
+  id: "u1",
+  tenantId: "acme",
+  name: "Alice Updated",
+  email: "alice@acme.com",
+});
+console.log(`Upserted user, cost: ${ru} RU`);
+```
+
+### deleteWithMetrics()
+
+```ts
+const { result, ru } = await users.deleteWithMetrics("u1", ["acme"]);
+console.log(`Deleted user, cost: ${ru} RU`);
+// result is undefined (void)
+```
+
+## RU Monitoring Pattern
+
+Track cumulative RU across a request to detect expensive operations:
+
+```ts
+async function handleRequest(req: Request) {
+  let totalRU = 0;
+
+  const { result: user, ru: readRU } = await users.findByIdWithMetrics(
+    req.params.id,
+    [req.params.tenantId],
+  );
+  totalRU += readRU;
+
+  const { ru: writeRU } = await users.upsertWithMetrics({
+    ...user,
+    name: req.body.name,
+  });
+  totalRU += writeRU;
+
+  console.log(`Total RU for request: ${totalRU}`);
+  return { status: 200, jsonBody: user };
+}
+```
+
+### Logging RU Per Endpoint
+
+```ts
+app.use(async (req, res, next) => {
+  const start = Date.now();
+  let totalRU = 0;
+
+  // Wrap operations to accumulate RU
+  const { result, ru } = await users.findByIdWithMetrics(req.params.id, [req.params.tenantId]);
+  totalRU += ru;
+
+  console.log({
+    method: req.method,
+    path: req.path,
+    ru: totalRU,
+    duration: Date.now() - start,
+  });
+});
+```
+
+## Cache Hit: ru = 0
+
+When using [request-scoped caching](/docs/client/cache) with `scope()`, a cache hit returns `ru: 0`:
+
+```ts
+const scoped = users.scope();
+
+const { ru: firstRU } = await scoped.findByIdWithMetrics("u1", ["acme"]);
+// firstRU → e.g. 1.0 (actual Cosmos DB read)
+
+const { ru: secondRU } = await scoped.findByIdWithMetrics("u1", ["acme"]);
+// secondRU → 0 (served from cache)
+```
+
+This makes it easy to verify that caching is working as expected and to measure actual RU savings.

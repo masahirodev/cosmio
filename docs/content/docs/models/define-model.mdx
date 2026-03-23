@@ -1,0 +1,88 @@
+---
+title: Model Definition
+description: Define type-safe Cosmos DB models with Zod schemas
+---
+
+`defineModel()` creates a type-safe model definition. **No DB connection required** — models are pure data definitions that can be used for type inference, schema generation, and documentation.
+
+## Basic Usage
+
+```ts
+import { defineModel } from "cosmio";
+import { z } from "zod";
+
+const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    email: z.string().email(),
+    age: z.number().optional(),
+  }),
+  description: "Application users",
+});
+```
+
+## Partition Keys
+
+Partition keys are defined as an array of paths. Single and hierarchical keys are supported:
+
+```ts
+// Single partition key
+partitionKey: ["/tenantId"]
+
+// Hierarchical partition key (Cosmos DB v2)
+partitionKey: ["/tenantId", "/siteId"]
+```
+
+The partition key type is automatically inferred as a tuple:
+
+```ts
+// Single PK → [string]
+type PK = typeof UserModel._types.partitionKeyValues;
+
+// Hierarchical PK → [string, string]
+const InspectionModel = defineModel({
+  partitionKey: ["/tenantId", "/siteId"],
+  // ...
+});
+type PK2 = typeof InspectionModel._types.partitionKeyValues; // [string, string]
+```
+
+## Type Extraction
+
+```ts
+// Input type (what you pass to create/upsert)
+type UserInput = typeof UserModel._types.input;
+
+// Output type (what Zod produces after validation)
+type UserOutput = typeof UserModel._types.output;
+
+// Document type (output + Cosmos system fields)
+type UserDoc = typeof UserModel._types.document;
+
+// Partition key values tuple
+type UserPK = typeof UserModel._types.partitionKeyValues;
+```
+
+## Model Config Reference
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `name` | `string` | Yes | Human-readable model name |
+| `container` | `string` | Yes | Cosmos DB container name |
+| `partitionKey` | `[string, ...string[]]` | Yes | Partition key paths |
+| `schema` | `z.ZodObject` | Yes | Zod schema |
+| `defaults` | `Record` | No | Default values for fields |
+| `discriminator` | `{ field, value }` | No | Multi-model container support |
+| `softDelete` | `{ field, autoExclude? }` | No | Soft delete configuration |
+| `migrate` | `(raw) => raw` | No | Read-time migration function |
+| `validateOnRead` | `boolean` | No | Validate on read (default: false) |
+| `indexingPolicy` | `IndexingPolicy` | No | Cosmos DB indexing policy |
+| `defaultTtl` | `number` | No | Default TTL in seconds |
+| `uniqueKeyPolicy` | `UniqueKeyPolicy` | No | Unique key constraints |
+| `conflictResolutionPolicy` | `ConflictResolutionPolicy` | No | Multi-region conflict resolution |
+| `description` | `string` | No | Documentation description |

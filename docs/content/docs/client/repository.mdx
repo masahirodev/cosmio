@@ -1,0 +1,85 @@
+---
+title: Repository Pattern
+description: defineRepository() for custom business logic methods on top of CRUD
+---
+
+`defineRepository()` adds custom query methods and business logic on top of the standard CRUD operations.
+
+## Defining a Repository
+
+```ts
+import { defineRepository } from "cosmio";
+
+const UserRepo = defineRepository(UserModel, (container) => ({
+  findByEmail: (tenant: string, email: string) =>
+    container
+      .find([tenant])
+      .where("email", "=", email)
+      .exec()
+      .then((r) => r[0]),
+
+  findActive: (tenant: string) =>
+    container
+      .find([tenant])
+      .where({ status: "active" })
+      .exec(),
+
+  deactivate: async (id: string, tenant: string) => {
+    await container.patch(id, [tenant], [
+      { op: "replace", path: "/status", value: "inactive" },
+    ]);
+  },
+}));
+```
+
+## Using a Repository
+
+Pass a `CosmioContainer` to the repository factory. All base CRUD methods remain available:
+
+```ts
+const users = UserRepo(client.model(UserModel));
+
+// Custom methods
+const alice = await users.findByEmail("acme", "alice@acme.com");
+const active = await users.findActive("acme");
+await users.deactivate("u1", "acme");
+
+// Base CRUD still works
+await users.create({
+  id: "u2",
+  tenantId: "acme",
+  name: "Bob",
+  email: "bob@acme.com",
+});
+
+const user = await users.findById("u2", ["acme"]);
+```
+
+## Type Safety
+
+The returned object is the intersection of `CosmioContainer` and your custom methods -- full autocomplete for both:
+
+```ts
+// TypeScript knows about both custom and CRUD methods
+users.findByEmail   // (tenant: string, email: string) => Promise<UserDoc | undefined>
+users.create        // (doc: UserInput) => Promise<UserDoc>
+users.findById      // (id: string, pk: [string]) => Promise<UserDoc | undefined>
+```
+
+## Organizing Repositories
+
+A common pattern is to define repositories alongside models:
+
+```ts
+// models/user.ts
+export const UserModel = defineModel({ ... });
+
+export const UserRepo = defineRepository(UserModel, (c) => ({
+  findByEmail: (tenant: string, email: string) =>
+    c.find([tenant]).where("email", "=", email).exec().then(r => r[0]),
+}));
+
+// app.ts
+import { UserModel, UserRepo } from "./models/user.js";
+const users = UserRepo(client.model(UserModel));
+```

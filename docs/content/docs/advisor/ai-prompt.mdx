@@ -1,0 +1,85 @@
+---
+title: AI-Powered Optimization
+description: Generate structured prompts for Claude/GPT to optimize your Cosmos DB models
+---
+
+`generateAdvisorPrompt()` creates a structured prompt you can send to Claude, GPT, or any LLM for expert-level Cosmos DB optimization advice.
+
+## Basic Usage
+
+```ts
+import { analyzeModels, generateAdvisorPrompt } from "cosmio";
+
+const modelsWithPatterns = [
+  { model: UserModel, patterns: [/* ... */] },
+  { model: OrderModel, patterns: [/* ... */] },
+];
+
+// Run rule-based analysis first
+const report = analyzeModels(modelsWithPatterns);
+
+// Generate a structured prompt with models, patterns, and analysis results
+const prompt = generateAdvisorPrompt(modelsWithPatterns, report);
+```
+
+## With Claude (Anthropic)
+
+```ts
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = new Anthropic();
+
+const response = await anthropic.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 4096,
+  messages: [{ role: "user", content: prompt }],
+});
+
+console.log(response.content[0].text);
+```
+
+## With OpenAI
+
+```ts
+import OpenAI from "openai";
+
+const openai = new OpenAI();
+
+const response = await openai.chat.completions.create({
+  model: "gpt-4o",
+  messages: [{ role: "user", content: prompt }],
+});
+
+console.log(response.choices[0].message.content);
+```
+
+## What the Prompt Contains
+
+The generated prompt includes:
+
+1. **System context** -- Instructs the AI to act as a Cosmos DB expert
+2. **Design patterns reference** -- All 9 official Cosmos DB patterns as a lookup table
+3. **Model definitions** -- JSON Schema, partition keys, indexing policies
+4. **Access patterns** -- Operations, RPS, document sizes, query fields
+5. **Shared containers** -- Single-table design relationships
+6. **Automated analysis results** -- Findings, RU estimates, cost breakdowns
+7. **Structured output request** -- Asks for Azure Advisor-format recommendations
+
+## AI Response Format
+
+The prompt requests responses in five Azure Advisor categories:
+
+1. **Cost** -- RU optimization, throughput mode, monthly estimates
+2. **Performance** -- Partition key evaluation, index recommendations, design patterns
+3. **Reliability** -- Consistency, backup, multi-region
+4. **Security** -- Sensitive field handling, access control
+5. **Operational Excellence** -- TTL, monitoring, schema evolution
+
+## Without Pre-Analysis
+
+You can skip the rule-based analysis and let the AI do everything:
+
+```ts
+const prompt = generateAdvisorPrompt(modelsWithPatterns);
+// No report passed — AI analyzes from scratch
+```

@@ -1,0 +1,178 @@
+---
+title: DTO (Data Transfer Object)
+description: 名前付き DTO とプロジェクト全体のポリシーでクエリ結果のフィールドを制御する
+---
+
+Cosmio にはビルトインの DTO レイヤーがあり、API に公開するフィールドを宣言的に制御できます。DTO はモデル定義上で宣言し、実行時には Zod でバリデーションされ、型推論も完全にサポートされています。
+
+## モデルでの DTO 定義
+
+`defineModel()` に `dto` マップを追加します。各エントリは **omit**（除外リスト）または **pick**（許可リスト）を持つ名前付き DTO です:
+
+```ts
+import { z } from "zod";
+import { defineModel } from "cosmio";
+
+const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    email: z.string(),
+    passwordHash: z.string(),
+    internalScore: z.number(),
+    createdAt: z.string(),
+  }),
+  dto: {
+    api: { omit: ["passwordHash", "internalScore"] as const },
+    admin: { omit: ["passwordHash"] as const },
+    public: { pick: ["id", "name"] as const },
+  },
+});
+```
+
+- **omit** は指定したフィールドを除外し、それ以外を保持します。
+- **pick** は指定したフィールドのみを保持し、それ以外を除外します。
+- 正確な型推論のために `as const` が必要です。
+- `omit` / `pick` で参照されるフィールドはモデル作成時にスキーマに対して検証されます。存在しないフィールドを指定すると即座にエラーが発生します。
+
+## model.toDto()
+
+単一のドキュメントを名前付き DTO の形状に変換します:
+
+```ts
+const apiUser = UserModel.toDto("api", rawDoc);
+// => { id, tenantId, name, email, createdAt }
+//    passwordHash と internalScore が除外される
+
+const publicUser = UserModel.toDto("public", rawDoc);
+// => { id, name }
+```
+
+内部的に `toDto()` は派生スキーマに対して `zodSchema.parse()` を呼び出すため、未知のフィールド（Cosmos DB のシステムフィールド `_rid`、`_self`、`_ts`、`_etag` を含む）は常に除外されます。
+
+未定義の DTO 名を指定するとエラーになります:
+
+```ts
+UserModel.toDto("nonExistent", rawDoc);
+// Error: DTO "nonExistent" is not defined in model "User"
+```
+
+## QueryBuilder.asDto()
+
+クエリビルダーで DTO 変換をクエリ結果に直接適用します。戻り値の型は DTO の形状に絞り込まれます:
+
+```ts
+const users = client.model(UserModel);
+
+const apiUsers = await users
+  .find(["acme"])
+  .where({ status: "active" })
+  .asDto("api")
+  .run();
+// => Array of { id, tenantId, name, email, createdAt }
+```
+
+`asDto()` は他のクエリビルダーメソッド（`where`、`orderBy`、`limit` など）とチェーンできます。SQL クエリ自体は変更されず、DTO 変換はフェッチ後に Zod parse で行われます。
+
+## 型推論
+
+`_types.dto` を使って DTO の出力型を取得できます:
+
+```ts
+type ApiUser = typeof UserModel._types.dto.api;
+// => { id: string; tenantId: string; name: string; email: string; createdAt: string }
+
+type PublicUser = typeof UserModel._types.dto.public;
+// => { id: string; name: string }
+```
+
+内部で使用されているユーティリティ型:
+
+- **`DtoRule<TSchema>`** — 単一のルール: `{ omit: [...] }` または `{ pick: [...] }`。
+- **`DtoMap<TSchema>`** — 名前付き DTO ルールのマップ（例: `{ api: ..., public: ... }`）。
+- **`ResolveDtoRule<TSchema, TRule>`** — 1つのルールを `Omit<...>` または `Pick<...>` に解決。
+- **`ResolveDtoMap<TSchema, TDtoMap>`** — マップ全体を出力型のレコードに解決。
+
+## DtoPolicy — プロジェクト全体のフィールド除外
+
+`defineDtoPolicy()` は、すべてのモデルにわたってグローバルにフィールドを除外する再利用可能なポリシーを作成します。Cosmos DB のシステムフィールド（`_rid`、`_self`、`_ts`、`_etag`）や内部フィールドをすべての API レスポンスから除去するのに便利です。
+
+```ts
+import { defineDtoPolicy } from "cosmio";
+
+export const dtoPolicy = defineDtoPolicy({
+  globalOmit: ["_rid", "_self", "_ts", "_etag"],
+});
+```
+
+### policy.apply()
+
+モデルの名前付き DTO を最初に適用し、その後グローバルフィールドを除外します:
+
+```ts
+const apiUser = dtoPolicy.apply(UserModel, "api", rawDoc);
+// 1. UserModel.toDto("api", rawDoc) — passwordHash, internalScore を除外
+// 2. ポリシーが _rid, _self, _ts, _etag を結果から除去
+```
+
+### policy.strip()
+
+モデル DTO を適用せずに、グローバル（およびモデル別オーバーライド）のフィールドのみを除外します:
+
+```ts
+const cleaned = dtoPolicy.strip(rawDoc);
+// _rid, _self, _ts, _etag を除去 — 他のフィールドはすべて保持
+```
+
+オプションでモデル名を渡すと、モデル別のオーバーライドが適用されます:
+
+```ts
+const cleaned = dtoPolicy.strip(rawDoc, "Session");
+```
+
+## モデル別オーバーライド
+
+`overrides` オプションでモデルごとにポリシーをカスタマイズできます:
+
+- **`include`** — `globalOmit` に含まれるフィールドを、このモデルでは除外しないようにします。
+- **`omit`** — このモデルで追加のフィールドを除外します。
+
+```ts
+export const dtoPolicy = defineDtoPolicy({
+  globalOmit: ["_rid", "_self", "_ts", "_etag"],
+  overrides: {
+    AuditLog: { include: ["_ts"] },          // 監査ログでは _ts を保持
+    Session:  { omit: ["sessionToken"] },    // さらに sessionToken を除外
+  },
+});
+```
+
+この設定での各モデルの実効 omit セット:
+
+| モデル | 実効 omit セット |
+| --- | --- |
+| (デフォルト) | `_rid`, `_self`, `_ts`, `_etag` |
+| AuditLog | `_rid`, `_self`, `_etag` (\_ts は再許可) |
+| Session | `_rid`, `_self`, `_ts`, `_etag`, `sessionToken` |
+
+`include` と `omit` を1つのオーバーライドで組み合わせることもできます:
+
+```ts
+overrides: {
+  Special: { include: ["_ts", "_etag"], omit: ["secretField"] },
+}
+// 実効: _rid, _self, secretField (_ts と _etag は保持)
+```
+
+### resolvedOmitFor()
+
+特定のモデルの実効 omit セットを確認できます:
+
+```ts
+dtoPolicy.resolvedOmitFor("AuditLog").has("_ts"); // false (再許可済み)
+dtoPolicy.resolvedOmitFor("Session").has("sessionToken"); // true (追加除外)
+```

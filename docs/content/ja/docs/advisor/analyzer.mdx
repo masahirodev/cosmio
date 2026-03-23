@@ -1,0 +1,93 @@
+---
+title: アクセスパターン分析
+description: Azure Advisorカテゴリ、RU見積もり、コスト内訳によるルールベースのモデル分析
+---
+
+`analyzeModels()` はAzure Advisorフレームワークに従い、データモデルとアクセスパターンのルールベース分析を実行します。
+
+## 基本的な使い方
+
+```ts
+import { analyzeModels } from "cosmio";
+
+const report = analyzeModels([
+  {
+    model: UserModel,
+    patterns: [
+      {
+        name: "Get user by ID",
+        operation: "point-read",
+        rps: 100,
+        avgDocumentSizeBytes: 2048,
+      },
+      {
+        name: "List users by tenant",
+        operation: "query",
+        rps: 20,
+        fields: [
+          { field: "tenantId", usage: "filter" },
+          { field: "createdAt", usage: "sort" },
+        ],
+        expectedResultCount: 50,
+      },
+    ],
+  },
+]);
+```
+
+## レポート構造
+
+```ts
+interface AdvisorReport {
+  findings: AdvisorFinding[];              // 問題と提案
+  ruEstimates: RUEstimate[];               // パターンごとのRU見積もり
+  costBreakdowns: CostBreakdown[];         // モデルごとのコスト分析
+  designPatternRecommendations: DesignPatternRecommendation[];
+  summary: string;                         // 人間が読みやすいサマリー
+}
+```
+
+## Azure Advisorカテゴリ
+
+発見事項は5つの柱に分類されます：
+
+| カテゴリ | 発見事項の例 |
+|---------|------------|
+| **パフォーマンス** | ホットパーティション（PK001）、クロスパーティションクエリ（QRY001）、インデックス不足（IDX001） |
+| **コスト** | 大きなドキュメント（CST001）、デフォルトインデックスポリシー（CST002） |
+| **信頼性** | ディスクリミネータなしの共有コンテナ（REL001） |
+| **運用効率** | TTLなしの高書き込みレート（OPS001） |
+| **セキュリティ** | （AIアドバイザーが検出） |
+
+## RU見積もり
+
+各アクセスパターンに推定RUコストが算出されます：
+
+| 操作 | 見積もり式 |
+|------|----------|
+| ポイントリード | 1KBあたり約1 RU |
+| 作成/アップサート | 1KBあたり約5.5 RU（インデックス含む） |
+| 削除 | 1KBあたり約5 RU |
+| パッチ | 1KBあたり約3 RU |
+| クエリ（単一パーティション） | 結果1件あたり1KBにつき約0.15 RU |
+| クエリ（クロスパーティション） | 結果1件あたり1KBにつき約0.3 RU + ファンアウト |
+
+## コスト内訳
+
+```ts
+for (const cost of report.costBreakdowns) {
+  console.log(`${cost.model}: ${cost.totalRUPerSecond} RU/s`);
+  console.log(`  推定: $${cost.estimatedMonthlyCostUSD}/月`);
+  console.log(`  推奨: ${cost.throughputRecommendation}`);
+  // throughputRecommendation: "serverless" | "autoscale" | "provisioned"
+}
+```
+
+## 重大度レベル
+
+| 重大度 | 意味 |
+|--------|------|
+| `error` | 修正必須 -- 障害やスキャンクエリの原因 |
+| `warning` | 修正推奨 -- パフォーマンスまたはコストへの影響 |
+| `suggestion` | あると良い -- 最適化の機会 |
+| `info` | 情報 -- 認識すべき事項 |

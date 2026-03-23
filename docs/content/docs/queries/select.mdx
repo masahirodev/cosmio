@@ -1,0 +1,85 @@
+---
+title: Select / Projection
+description: Reduce RU consumption by selecting only the fields you need
+---
+
+The `select()` method lets you specify which fields to return from a query. This generates a Cosmos DB projection (`SELECT c.field1, c.field2 FROM c`) instead of `SELECT * FROM c`, reducing the amount of data transferred and lowering RU consumption.
+
+```ts
+const users = client.model(UserModel);
+```
+
+## Basic Usage
+
+```ts
+const names = await users
+  .find(["acme"])
+  .select("id", "name")
+  .exec();
+// → { id: string; name: string }[]
+```
+
+Only the specified fields are returned. The result type is automatically narrowed to `Pick<T, K>`.
+
+## Type Narrowing
+
+The return type of `exec()` is narrowed to only include the selected fields:
+
+```ts
+const results = await users
+  .find(["acme"])
+  .select("id", "name", "email")
+  .exec();
+
+// TypeScript knows the shape:
+results[0].id;    // ✅ string
+results[0].name;  // ✅ string
+results[0].email; // ✅ string
+results[0].role;  // ❌ Type error — not selected
+```
+
+This is powered by the `ProjectedQueryBuilder<TSchema, TPaths, K>` interface, which changes the `exec()` return type from `DocumentRead<TSchema>[]` to `Pick<z.infer<TSchema>, K>[]`.
+
+## Combining with Other Clauses
+
+`select()` works with all query builder methods:
+
+```ts
+const result = await users
+  .find(["acme"])
+  .select("id", "name", "createdAt")
+  .where({ role: "admin" })
+  .orderBy("createdAt", "DESC")
+  .limit(10)
+  .exec();
+```
+
+## RU Reduction
+
+Cosmos DB charges RU based on document size. By selecting only the fields you need, you transfer less data and pay fewer RU:
+
+```ts
+// Full document read — higher RU
+const full = await users.find(["acme"]).exec();
+
+// Projected read — lower RU
+const projected = await users.find(["acme"]).select("id", "name").exec();
+```
+
+This is especially effective when documents contain large fields (e.g., embedded arrays, blobs, or rich text) that you do not need for a particular query.
+
+## Generated SQL
+
+`select()` produces targeted SQL instead of `SELECT *`:
+
+```ts
+const query = users
+  .find(["acme"])
+  .select("id", "name")
+  .where({ role: "admin" })
+  .toQuerySpec();
+
+// query.query → "SELECT c.id, c.name FROM c WHERE c.role = @p0"
+```
+
+Use `toQuerySpec()` to inspect the generated SQL for debugging.

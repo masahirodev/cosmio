@@ -1,0 +1,74 @@
+---
+title: Design Patterns
+description: 9 official Cosmos DB design patterns with automatic recommendations
+---
+
+Cosmio includes a catalog of the 9 official Azure Cosmos DB design patterns from [Azure Samples](https://github.com/Azure-Samples/cosmos-db-design-patterns). The analyzer automatically recommends patterns based on your access patterns.
+
+## Pattern Catalog
+
+| Pattern | When to Use |
+|---------|-------------|
+| **Attribute Array** | Many optional fields -- store as key-value arrays to reduce sparse document size |
+| **Data Binning** | Time-series data with grouping -- aggregate into bins to reduce document count |
+| **Distributed Counter** | High-concurrency counting -- split across multiple documents to avoid contention |
+| **Distributed Lock** | Multiple instances need exclusive access to a resource |
+| **Document Versioning** | Audit trails -- track entity changes over its lifecycle |
+| **Event Sourcing** | Immutable event streams -- reconstruct state from event history |
+| **Materialized View** | Cross-partition queries -- precompute denormalized views for read performance |
+| **Preallocation** | Reserve IDs or slots in advance to reduce latency |
+| **Schema Versioning** | Evolve schemas across versions without forcing batch migrations |
+
+## Automatic Recommendations
+
+The analyzer detects patterns that match your access patterns:
+
+```ts
+import { analyzeModels } from "cosmio";
+
+const report = analyzeModels([
+  {
+    model: EventModel,
+    patterns: [
+      { name: "Write events", operation: "create", rps: 100 },
+      { name: "List by time", operation: "query", rps: 50,
+        fields: [{ field: "timestamp", usage: "sort" }] },
+    ],
+  },
+]);
+
+for (const rec of report.designPatternRecommendations) {
+  console.log(`${rec.pattern}: ${rec.reason}`);
+  console.log(`  Reference: ${rec.referenceUrl}`);
+}
+// event-sourcing: High write rate with time-ordered data — consider Event Sourcing
+```
+
+## Detection Rules
+
+| Trigger | Recommended Pattern |
+|---------|-------------------|
+| `migrate` function configured | Schema Versioning |
+| High writes + time-ordered sorts | Event Sourcing |
+| Time-series + GROUP BY fields | Data Binning |
+| Upsert rate >= 100 rps | Distributed Counter |
+| Cross-partition queries detected | Materialized View |
+| Audit/history in access pattern descriptions | Document Versioning |
+| >= 5 optional fields in schema | Attribute Array |
+
+## Manual Pattern Lookup
+
+```ts
+import { getPatternInfo, recommendPattern, DESIGN_PATTERNS } from "cosmio";
+
+// Get info about a specific pattern
+const info = getPatternInfo("materialized-view");
+console.log(info.name);        // "Materialized View"
+console.log(info.description); // "Create and manage materialized views..."
+console.log(info.whenToUse);   // "When query patterns require denormalized data..."
+
+// Create a recommendation manually
+const rec = recommendPattern("event-sourcing", "Your app is event-driven");
+console.log(rec.referenceUrl);
+// https://github.com/Azure-Samples/cosmos-db-design-patterns/tree/main/event-sourcing/
+```

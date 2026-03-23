@@ -1,0 +1,92 @@
+---
+title: API Reference
+description: Complete reference of CosmioContainer methods and all exports
+---
+
+## CosmioContainer Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `create` | `(doc) => Promise<Document>` | Create with Zod validation and defaults |
+| `upsert` | `(doc) => Promise<Document>` | Upsert with Zod validation and defaults |
+| `findById` | `(id, pk) => Promise<Document \| undefined>` | Point read by ID + partition key |
+| `replace` | `(id, doc, opts?) => Promise<Document>` | Full document replacement (optional ETag) |
+| `delete` | `(id, pk) => Promise<void>` | Delete (soft delete if configured) |
+| `hardDelete` | `(id, pk) => Promise<void>` | Physical delete (bypasses soft delete) |
+| `restore` | `(id, pk) => Promise<Document \| undefined>` | Restore a soft-deleted document |
+| `patch` | `(id, pk, ops) => Promise<Document>` | Partial update with patch operations |
+| `query` | `(spec, pk?) => Promise<Document[]>` | Raw SQL query |
+| `find` | `(pk?) => QueryBuilder` | Start a fluent query builder |
+| `findWithDeleted` | `(pk?) => QueryBuilder` | Query including soft-deleted docs |
+| `bulk` | `(ops) => Promise<void>` | Execute bulk create/upsert/delete |
+| `use` | `(event, fn) => this` | Register a lifecycle hook |
+| `scope` | `() => CosmioContainer` | Create a request-scoped cached instance |
+| `raw` | `Container` | Access underlying Cosmos DB Container |
+| `model` | `ModelDefinition` | The bound model definition |
+
+## All Exports
+
+### Core
+
+| Export | Type | Module |
+|--------|------|--------|
+| `defineModel` | function | `cosmio` |
+| `CosmioClient` | class | `cosmio` |
+| `CosmioContainer` | class | `cosmio` |
+| `QueryBuilder` | class | `cosmio` |
+| `TransactionBuilder` | class | `cosmio` |
+| `defineRepository` | function | `cosmio` |
+| `ReadCache` | class | `cosmio` |
+| `HookRegistry` | class | `cosmio` |
+
+### Utilities
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `ensureContainer` | function | Create container if not exists |
+| `ensureContainers` | function | Create multiple containers |
+| `buildPartitionKey` | function | Build PK from values array |
+| `extractPartitionKey` | function | Extract PK values from a document |
+
+### Errors
+
+| Export | Type |
+|--------|------|
+| `CosmioError` | class |
+| `NotFoundError` | class |
+| `ConflictError` | class |
+| `PreconditionFailedError` | class |
+| `TooManyRequestsError` | class |
+| `ValidationError` | class |
+| `mapCosmosError` | function |
+
+### Schema Generation
+
+| Export | Type |
+|--------|------|
+| `toJsonSchema` | function |
+| `toJsonSchemas` | function |
+| `toOpenAPI` | function |
+| `toMarkdown` | function |
+| `toMarkdownDoc` | function |
+| `toMermaidER` | function |
+
+### Advisor
+
+| Export | Type |
+|--------|------|
+| `analyzeModels` | function |
+| `generateAdvisorPrompt` | function |
+| `DESIGN_PATTERNS` | object |
+| `getPatternInfo` | function |
+| `recommendPattern` | function |
+
+### Migrations
+
+| Export | Type |
+|--------|------|
+| `MigrationRegistry` | class |
+
+### Type Exports
+
+`ModelDefinition`, `ModelConfig`, `DefaultsMap`, `DefaultValue`, `Discriminator`, `CreateInputWithDefaults`, `CosmioClientOptions`, `BulkOperation`, `HookEvent`, `HookFn`, `Migration`, `CosmioJsonSchema`, `MermaidOptions`, `CosmioErrorCode`, `WhereInput`, `StringFilter`, `NumberFilter`, `BooleanFilter`, `CreateInput`, `DocumentRead`, `ModelOutput`, `PartitionKeyValues`, `CosmosSystemFields`, `WithSystemFields`, `AccessPattern`, `AdvisorCategory`, `AdvisorFinding`, `AdvisorReport`, `CosmosDesignPattern`, `CostBreakdown`, `DesignPatternRecommendation`, `ModelWithPatterns`, `RUEstimate`, `Severity`.

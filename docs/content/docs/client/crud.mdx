@@ -1,0 +1,116 @@
+---
+title: CRUD Operations
+description: Create, upsert, findById, replace, delete, patch, query, and bulk operations
+---
+
+All operations are available on `CosmioContainer`, returned by `client.model(Model)`.
+
+```ts
+const users = client.model(UserModel);
+```
+
+## create()
+
+```ts
+const user = await users.create({
+  id: "u1",
+  tenantId: "acme",
+  name: "Alice",
+  email: "alice@acme.com",
+});
+```
+
+Fields with [defaults](/docs/models/defaults) are optional. Zod validation runs before the write.
+
+## upsert()
+
+```ts
+const user = await users.upsert({
+  id: "u1",
+  tenantId: "acme",
+  name: "Alice Updated",
+  email: "alice@acme.com",
+});
+```
+
+## findById()
+
+Point read by `id` + partition key values. Returns `undefined` if not found:
+
+```ts
+const user = await users.findById("u1", ["acme"]);
+```
+
+## replace()
+
+Full document replacement with optional ETag for optimistic concurrency:
+
+```ts
+await users.replace("u1", updatedDoc, { etag: '"some-etag"' });
+```
+
+## delete()
+
+Deletes the document. If [soft delete](/docs/client/soft-delete) is configured, sets a timestamp instead:
+
+```ts
+await users.delete("u1", ["acme"]);
+```
+
+## patch()
+
+Partial update using Cosmos DB patch operations:
+
+```ts
+await users.patch("u1", ["acme"], [
+  { op: "replace", path: "/name", value: "Bob" },
+  { op: "add", path: "/role", value: "admin" },
+]);
+```
+
+## query()
+
+Execute raw SQL queries. See [Raw SQL](/docs/queries/raw-sql) for details:
+
+```ts
+const admins = await users.query(
+  {
+    query: "SELECT * FROM c WHERE c.role = @role",
+    parameters: [{ name: "@role", value: "admin" }],
+  },
+  ["acme"],
+);
+```
+
+## find()
+
+Start a [fluent query builder](/docs/queries/query-builder):
+
+```ts
+const results = await users
+  .find(["acme"])
+  .where({ name: { contains: "Ali" } })
+  .orderBy("createdAt", "DESC")
+  .limit(10)
+  .exec();
+```
+
+## bulk()
+
+Execute multiple operations in a single request:
+
+```ts
+await users.bulk([
+  { type: "create", body: { id: "u2", tenantId: "acme", name: "Bob", email: "bob@acme.com" } },
+  { type: "upsert", body: { id: "u3", tenantId: "acme", name: "Carol", email: "carol@acme.com" } },
+  { type: "delete", id: "u4", partitionKeyValues: ["acme"] },
+]);
+```
+
+## Raw Container Access
+
+For unsupported operations, access the underlying Cosmos DB `Container`:
+
+```ts
+users.raw; // @azure/cosmos Container instance
+```

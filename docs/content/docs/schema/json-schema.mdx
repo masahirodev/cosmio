@@ -1,0 +1,84 @@
+---
+title: JSON Schema
+description: Generate JSON Schema from model definitions with Cosmio extensions
+---
+
+Generate JSON Schema (2019-09) from Cosmio model definitions using `zod-to-json-schema` with Cosmio-specific extensions.
+
+## Single Model
+
+```ts
+import { toJsonSchema } from "cosmio";
+
+const schema = toJsonSchema(UserModel);
+console.log(JSON.stringify(schema, null, 2));
+```
+
+Output:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "title": "User",
+  "description": "Application users",
+  "x-cosmio-container": "users",
+  "x-cosmio-partition-key": ["/tenantId"],
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "name": { "type": "string" },
+    "email": { "type": "string", "format": "email" }
+  },
+  "required": ["id", "tenantId", "name", "email"]
+}
+```
+
+## Multiple Models
+
+```ts
+import { toJsonSchemas } from "cosmio";
+
+const schemas = toJsonSchemas([UserModel, OrderModel]);
+// Returns: { User: CosmioJsonSchema, Order: CosmioJsonSchema }
+```
+
+## x-cosmio Extensions
+
+Each generated schema includes custom extensions:
+
+| Extension | Description |
+|-----------|-------------|
+| `x-cosmio-container` | Cosmos DB container name |
+| `x-cosmio-partition-key` | Partition key path(s) |
+| `x-cosmio-discriminator` | Discriminator field and value (if configured) |
+
+## CosmioJsonSchema Type
+
+```ts
+import type { CosmioJsonSchema } from "cosmio";
+
+interface CosmioJsonSchema {
+  $schema: string;
+  title: string;
+  description?: string;
+  "x-cosmio-container": string;
+  "x-cosmio-partition-key": readonly string[];
+  "x-cosmio-discriminator"?: { field: string; value: string };
+  [key: string]: unknown;
+}
+```
+
+## CLI
+
+```bash
+npx cosmio docs --format=json-schema src/models/*.ts
+npx cosmio docs --format=json-schema --output=schemas.json src/models/*.ts
+```
+
+## Use Cases
+
+- API documentation and contract generation
+- Client SDK generation from schema
+- Data validation in external systems
+- Import into schema registries

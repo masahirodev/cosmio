@@ -1,0 +1,98 @@
+---
+title: Per-Model Migration
+description: Model-level migrate function and validateOnRead
+---
+
+For simpler cases, define a `migrate` function directly on the model. This runs on every read, before Zod validation.
+
+## Basic Usage
+
+```ts
+const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    fullName: z.string(),
+    role: z.string(),
+  }),
+  migrate: (raw) => {
+    // v1 → v2: merge firstName + lastName into fullName
+    if (raw.firstName && !raw.fullName) {
+      raw.fullName = `${raw.firstName} ${raw.lastName}`;
+      delete raw.firstName;
+      delete raw.lastName;
+    }
+    // v2 → v3: add default role
+    if (!raw.role) {
+      raw.role = "member";
+    }
+    return raw;
+  },
+});
+```
+
+## validateOnRead
+
+By default, read-time Zod validation is **disabled** for performance. Enable it to catch malformed documents:
+
+```ts
+const StrictModel = defineModel({
+  name: "StrictModel",
+  container: "strict",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    status: z.enum(["draft", "published", "archived"]),
+  }),
+  migrate: (raw) => {
+    // Ensure status is valid after migration
+    if (!["draft", "published", "archived"].includes(raw.status as string)) {
+      raw.status = "draft";
+    }
+    return raw;
+  },
+  validateOnRead: true, // throws ValidationError if migration produces invalid data
+});
+```
+
+## Read Pipeline Order
+
+When both global and per-model migrations are configured, the pipeline runs in this order:
+
+1. **Global migrations** (`MigrationRegistry`) -- version-tracked, scoped
+2. **Per-model migrate** -- simple transform function
+3. **validateOnRead** -- Zod schema validation (if enabled)
+4. **afterRead hooks** -- post-processing (decrypt, transform)
+
+## When to Use Which
+
+| Approach | Best For |
+|----------|---------|
+| **Per-model `migrate`** | Simple, self-contained transforms for a single model |
+| **Global `MigrationRegistry`** | Versioned migrations across multiple models, team workflows |
+| **Both together** | Global handles versioning, per-model handles model-specific quirks |
+
+## Example: Gradual Migration
+
+Per-model `migrate` is ideal for gradual, read-time migrations. Old documents are transformed on read without requiring a batch update:
+
+```ts
+const OrderModel = defineModel({
+  // ...
+  migrate: (raw) => {
+    // Old orders stored price as string
+    if (typeof raw.totalPrice === "string") {
+      raw.totalPrice = parseFloat(raw.totalPrice);
+    }
+    // Old orders used "cancelled", new schema uses "canceled"
+    if (raw.status === "cancelled") {
+      raw.status = "canceled";
+    }
+    return raw;
+  },
+});
+```

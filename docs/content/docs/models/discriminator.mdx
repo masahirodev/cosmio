@@ -1,0 +1,78 @@
+---
+title: Discriminator
+description: Multi-model containers with discriminator for single-table design
+---
+
+Cosmos DB encourages storing multiple document types in a single container (single-table design). The `discriminator` option adds a type field so Cosmio can distinguish models in a shared container.
+
+## Defining Discriminated Models
+
+```ts
+const ArticleModel = defineModel({
+  name: "Article",
+  container: "content",
+  partitionKey: ["/siteId"],
+  schema: z.object({
+    id: z.string(),
+    siteId: z.string(),
+    type: z.literal("article"),
+    title: z.string(),
+    body: z.string(),
+  }),
+  discriminator: { field: "type", value: "article" },
+});
+
+const CommentModel = defineModel({
+  name: "Comment",
+  container: "content",
+  partitionKey: ["/siteId"],
+  schema: z.object({
+    id: z.string(),
+    siteId: z.string(),
+    type: z.literal("comment"),
+    articleId: z.string(),
+    text: z.string(),
+  }),
+  discriminator: { field: "type", value: "comment" },
+});
+```
+
+## Automatic Query Filtering
+
+When you use `find()` on a discriminated model, Cosmio automatically adds a `WHERE c.type = @p0` clause so you only get documents matching that model:
+
+```ts
+const articles = client.model(ArticleModel);
+
+// Only returns documents where type === "article"
+const results = await articles
+  .find(["site-1"])
+  .where({ title: { contains: "Cosmos" } })
+  .exec();
+```
+
+## Validation on Write
+
+Cosmio validates the discriminator field on `create()` and `upsert()`. If the field value does not match, a `ValidationError` is thrown:
+
+```ts
+// Throws ValidationError: Discriminator field "type" must be "article"
+await articles.create({
+  id: "1",
+  siteId: "site-1",
+  type: "comment", // wrong type
+  title: "Hello",
+  body: "...",
+});
+```
+
+## Container Setup
+
+Both models share the same container. Use `ensureContainers()` to deduplicate:
+
+```ts
+import { ensureContainers } from "cosmio";
+
+// Creates "content" container once, using the first model's settings
+await ensureContainers(client.database, [ArticleModel, CommentModel]);
+```

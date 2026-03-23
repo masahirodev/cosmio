@@ -1,0 +1,104 @@
+---
+title: Quick Start
+description: Define your first model and perform CRUD operations in 5 minutes
+---
+
+## 1. Define a Model
+
+No DB connection required. Pure data definition.
+
+```ts twoslash
+import { defineModel } from "cosmio";
+import { z } from "zod";
+
+const TaskModel = defineModel({
+  name: "Task",
+  container: "tasks",
+  partitionKey: ["/projectId"],
+  schema: z.object({
+    id: z.string(),
+    projectId: z.string(),
+    title: z.string(),
+    status: z.string(),
+    priority: z.number(),
+    createdAt: z.number(),
+  }),
+  defaults: {
+    status: "open",
+    priority: 0,
+    createdAt: () => Math.floor(Date.now() / 1000),
+  },
+  description: "Project tasks",
+});
+
+// Fields with defaults are optional in input
+type TaskInput = typeof TaskModel._types.input;
+//   ^?
+
+// Output type has all fields required
+type TaskOutput = typeof TaskModel._types.output;
+//   ^?
+```
+
+## 2. Connect to Cosmos DB
+
+```ts
+import { CosmioClient, ensureContainer } from "cosmio";
+
+const client = new CosmioClient({
+  cosmos: { endpoint: "https://your-account.documents.azure.com:443/", key: "..." },
+  database: "mydb",
+});
+
+// Ensure the container exists
+await ensureContainer(client.database, TaskModel);
+
+// Bind model → type-safe operations
+const tasks = client.model(TaskModel);
+```
+
+## 3. Create
+
+```ts
+// status, priority, createdAt are auto-filled by defaults
+const task = await tasks.create({
+  id: "task-1",
+  projectId: "proj-1",
+  title: "Implement login page",
+});
+// → { id: "task-1", projectId: "proj-1", title: "...", status: "open", priority: 0, createdAt: 1711... }
+```
+
+## 4. Query
+
+```ts
+// Prisma-style where
+const openTasks = await tasks
+  .find(["proj-1"])
+  .where({
+    status: "open",
+    priority: { gte: 1 },
+  })
+  .orderBy("createdAt", "DESC")
+  .limit(20)
+  .exec();
+```
+
+## 5. Update & Delete
+
+```ts
+// Patch (partial update)
+await tasks.patch("task-1", ["proj-1"], [
+  { op: "replace", path: "/status", value: "done" },
+]);
+
+// Delete
+await tasks.delete("task-1", ["proj-1"]);
+```
+
+## Next Steps
+
+- [Model Definition](/docs/models/define-model) — Partition keys, discriminators, container config
+- [Where Filters](/docs/queries/where-filters) — Prisma-style, classic, raw SQL
+- [Migrations](/docs/migrations/global-registry) — Schema evolution without downtime
+- [Advisor](/docs/advisor/analyzer) — Optimize partition keys and indexing

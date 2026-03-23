@@ -1,0 +1,76 @@
+---
+title: デフォルト値
+description: 静的値やファクトリ関数による create/upsert 時のフィールド自動補完
+---
+
+`defineModel()` の `defaults` オプションを使うと、`create()` や `upsert()` の実行時にフィールドを自動補完できます。デフォルト値を持つフィールドは入力型で**オプショナル**になります。
+
+## 静的値
+
+```ts
+const TaskModel = defineModel({
+  name: "Task",
+  container: "tasks",
+  partitionKey: ["/projectId"],
+  schema: z.object({
+    id: z.string(),
+    projectId: z.string(),
+    title: z.string(),
+    status: z.string(),
+    priority: z.number(),
+  }),
+  defaults: {
+    status: "open",
+    priority: 0,
+  },
+});
+```
+
+## ファクトリ関数
+
+動的な値には関数を渡します。`create()` / `upsert()` のたびに呼び出されます:
+
+```ts
+defaults: {
+  createdAt: () => Math.floor(Date.now() / 1000),
+  id: () => crypto.randomUUID(),
+}
+```
+
+## 型推論
+
+`defaults` に指定したフィールドは、入力型で自動的にオプショナルになります。出力型では全フィールドが必須のままです。
+
+```ts
+type TaskInput = typeof TaskModel._types.input;
+// { id: string; projectId: string; title: string; status?: string; priority?: number }
+
+type TaskOutput = typeof TaskModel._types.output;
+// { id: string; projectId: string; title: string; status: string; priority: number }
+```
+
+## 使い方
+
+```ts
+const tasks = client.model(TaskModel);
+
+// status と priority は自動補完される
+const task = await tasks.create({
+  id: "t-1",
+  projectId: "proj-1",
+  title: "Fix login bug",
+});
+// → { id: "t-1", projectId: "proj-1", title: "Fix login bug", status: "open", priority: 0 }
+
+// デフォルト値を明示的に上書きすることも可能
+const urgent = await tasks.create({
+  id: "t-2",
+  projectId: "proj-1",
+  title: "Security patch",
+  priority: 10,
+});
+```
+
+## 動作の仕組み
+
+デフォルト値は Zod バリデーションの**前に**適用されます。入力でフィールドが `undefined` かつデフォルト値が設定されている場合、デフォルト値（またはファクトリ関数の戻り値）がパース前にドキュメントにマージされます。

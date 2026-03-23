@@ -1,0 +1,88 @@
+---
+title: ライフサイクルフック
+description: 監査、暗号化、キャッシュなどのためのミドルウェアフック
+---
+
+`CosmioContainer` にフックを登録して、操作の前後にロジックを実行できます。フックは登録順に実行され、非同期処理も可能です。
+
+## 利用可能なイベント
+
+| イベント | タイミング | ユースケース |
+|-------|--------|----------|
+| `beforeCreate` | create 書き込み前 | 監査フィールドの設定、データの暗号化 |
+| `afterCreate` | create 書き込み後 | 通知の送信、キャッシュの更新 |
+| `beforeUpsert` | upsert 書き込み前 | ビジネスルールの検証 |
+| `afterUpsert` | upsert 書き込み後 | 外部システムの同期 |
+| `beforeReplace` | replace 書き込み前 | 権限のチェック |
+| `afterReplace` | replace 書き込み後 | キャッシュの無効化 |
+| `beforeDelete` | delete 前 | ドキュメントのアーカイブ |
+| `afterDelete` | delete 後 | 関連データのクリーンアップ |
+| `afterRead` | 読み取り後（findById） | フィールドの復号、データの変換 |
+
+## フックの登録
+
+```ts
+const users = client.model(UserModel);
+
+users.use("beforeCreate", (doc) => {
+  doc.createdAt = Date.now();
+  doc.createdBy = getCurrentUserId();
+});
+
+users.use("beforeUpsert", (doc) => {
+  doc.updatedAt = Date.now();
+});
+```
+
+## 非同期フック
+
+フックは `Promise` を返すことができます:
+
+```ts
+users.use("afterCreate", async (doc) => {
+  await sendWelcomeEmail(doc.email as string);
+});
+```
+
+## 読み取り時の復号
+
+```ts
+users.use("afterRead", (doc) => {
+  doc.ssn = decrypt(doc.ssn as string);
+});
+```
+
+## 監査証跡
+
+```ts
+users.use("beforeCreate", (doc) => {
+  doc.audit = { createdAt: Date.now(), createdBy: ctx.userId };
+});
+
+users.use("beforeReplace", (doc) => {
+  doc.audit = {
+    ...(doc.audit as object),
+    updatedAt: Date.now(),
+    updatedBy: ctx.userId,
+  };
+});
+```
+
+## 複数フック
+
+同じイベントに複数のフックを登録できます。登録順に実行されます:
+
+```ts
+users
+  .use("beforeCreate", validateBusinessRules)
+  .use("beforeCreate", setAuditFields)
+  .use("beforeCreate", encryptSensitiveFields);
+```
+
+## フックのシグネチャ
+
+```ts
+type HookFn = (doc: Record<string, unknown>) => void | Promise<void>;
+```
+
+フックはミュータブルなオブジェクトとしてドキュメントを受け取ります。その場で変更してください。値を返す必要はありません。

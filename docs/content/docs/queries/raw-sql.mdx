@@ -1,0 +1,91 @@
+---
+title: Raw SQL Queries
+description: Execute Cosmos DB SQL queries with parameterized SqlQuerySpec
+---
+
+For full control over the query, use the `query()` method with a raw SQL string or `SqlQuerySpec`.
+
+## Simple String Query
+
+```ts
+const users = client.model(UserModel);
+
+const results = await users.query(
+  "SELECT * FROM c WHERE c.role = 'admin'",
+  ["acme"], // optional partition key
+);
+```
+
+## Parameterized Queries
+
+Always use parameters to prevent injection and improve plan caching:
+
+```ts
+const results = await users.query(
+  {
+    query: "SELECT * FROM c WHERE c.role = @role AND c.age >= @minAge",
+    parameters: [
+      { name: "@role", value: "member" },
+      { name: "@minAge", value: 18 },
+    ],
+  },
+  ["acme"],
+);
+```
+
+## Cross-Partition Query
+
+Omit the partition key to query across all partitions:
+
+```ts
+const allAdmins = await users.query({
+  query: "SELECT * FROM c WHERE c.role = @role",
+  parameters: [{ name: "@role", value: "admin" }],
+});
+```
+
+## Aggregation Queries
+
+```ts
+const counts = await users.query({
+  query: "SELECT c.role, COUNT(1) AS count FROM c GROUP BY c.role",
+});
+```
+
+## Projection
+
+```ts
+const names = await users.query(
+  "SELECT c.id, c.name, c.email FROM c",
+  ["acme"],
+);
+```
+
+## Using with SqlQuerySpec Type
+
+Import `SqlQuerySpec` from the Azure SDK for full type safety:
+
+```ts
+import type { SqlQuerySpec } from "@azure/cosmos";
+
+const spec: SqlQuerySpec = {
+  query: "SELECT * FROM c WHERE c.status = @status ORDER BY c._ts DESC",
+  parameters: [{ name: "@status", value: "active" }],
+};
+
+const results = await users.query(spec, ["acme"]);
+```
+
+## Read Pipeline
+
+Results from `query()` pass through the same read pipeline as other operations:
+1. Global migrations (if configured)
+2. Model-level `migrate` function (if configured)
+3. `validateOnRead` (if enabled)
+
+## When to Use
+
+- Complex aggregation queries not expressible with the query builder
+- Cosmos DB functions (`ST_DISTANCE`, `ARRAY_CONTAINS`, `IS_DEFINED`, etc.)
+- `GROUP BY`, `DISTINCT`, sub-queries
+- Maximum control over the SQL sent to Cosmos DB

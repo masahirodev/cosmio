@@ -1,0 +1,74 @@
+---
+title: デザインパターン
+description: 9つの公式Cosmos DBデザインパターンと自動レコメンド
+---
+
+Cosmioには [Azure Samples](https://github.com/Azure-Samples/cosmos-db-design-patterns) の9つの公式Azure Cosmos DBデザインパターンカタログが含まれています。アナライザーはアクセスパターンに基づいてパターンを自動的に推奨します。
+
+## パターンカタログ
+
+| パターン | 使用場面 |
+|---------|---------|
+| **Attribute Array** | オプショナルフィールドが多い場合 -- キー値配列として保存しスパースなドキュメントサイズを削減 |
+| **Data Binning** | グルーピング付きの時系列データ -- ビンに集約してドキュメント数を削減 |
+| **Distributed Counter** | 高並行性のカウント -- 複数ドキュメントに分散して競合を回避 |
+| **Distributed Lock** | 複数インスタンスがリソースへの排他アクセスを必要とする場合 |
+| **Document Versioning** | 監査証跡 -- ライフサイクル全体のエンティティ変更を追跡 |
+| **Event Sourcing** | 不変のイベントストリーム -- イベント履歴から状態を再構築 |
+| **Materialized View** | クロスパーティションクエリ -- 読み取りパフォーマンスのために非正規化ビューを事前計算 |
+| **Preallocation** | IDやスロットを事前に予約してレイテンシを削減 |
+| **Schema Versioning** | バッチマイグレーションを強制せずにバージョン間でスキーマを進化 |
+
+## 自動レコメンド
+
+アナライザーがアクセスパターンに一致するパターンを検出します：
+
+```ts
+import { analyzeModels } from "cosmio";
+
+const report = analyzeModels([
+  {
+    model: EventModel,
+    patterns: [
+      { name: "Write events", operation: "create", rps: 100 },
+      { name: "List by time", operation: "query", rps: 50,
+        fields: [{ field: "timestamp", usage: "sort" }] },
+    ],
+  },
+]);
+
+for (const rec of report.designPatternRecommendations) {
+  console.log(`${rec.pattern}: ${rec.reason}`);
+  console.log(`  Reference: ${rec.referenceUrl}`);
+}
+// event-sourcing: 高書き込みレート + 時系列データ — Event Sourcingを検討
+```
+
+## 検出ルール
+
+| トリガー | 推奨パターン |
+|---------|------------|
+| `migrate` 関数が設定済み | Schema Versioning |
+| 高書き込み + 時間順ソート | Event Sourcing |
+| 時系列 + GROUP BYフィールド | Data Binning |
+| アップサートレート >= 100 rps | Distributed Counter |
+| クロスパーティションクエリ検出 | Materialized View |
+| アクセスパターン説明に監査/履歴 | Document Versioning |
+| スキーマにオプショナルフィールド >= 5 | Attribute Array |
+
+## 手動パターン検索
+
+```ts
+import { getPatternInfo, recommendPattern, DESIGN_PATTERNS } from "cosmio";
+
+// 特定のパターン情報を取得
+const info = getPatternInfo("materialized-view");
+console.log(info.name);        // "Materialized View"
+console.log(info.description); // "Create and manage materialized views..."
+console.log(info.whenToUse);   // "When query patterns require denormalized data..."
+
+// 手動でレコメンドを作成
+const rec = recommendPattern("event-sourcing", "Your app is event-driven");
+console.log(rec.referenceUrl);
+// https://github.com/Azure-Samples/cosmos-db-design-patterns/tree/main/event-sourcing/
+```

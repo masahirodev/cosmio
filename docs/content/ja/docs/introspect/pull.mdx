@@ -1,0 +1,265 @@
+---
+title: cosmio pull
+description: Cosmos DB コンテナをイントロスペクトしてモデル定義を生成する
+---
+
+`cosmio pull` コマンドは Cosmos DB データベースに接続し、1つ以上のコンテナからドキュメントをサンプリングしてスキーマを推論し、`defineModel()` のソースファイルを生成します。
+
+## 使い方
+
+```bash
+cosmio pull [options]
+```
+
+オプションなしで実行すると、`cosmio.config.ts` のすべての pull ターゲットを読み込みます。CLI 引数で単一のコンテナを指定することもできます。
+
+## 接続オプション
+
+| オプション | 環境変数 | 説明 |
+|-----------|---------|------|
+| `--endpoint=<url>` | `COSMOS_ENDPOINT` | Cosmos DB エンドポイント URL |
+| `--key=<key>` | `COSMOS_KEY` | Cosmos DB アカウントキー |
+| `--connection-string=<str>` | `COSMOS_CONNECTION_STRING` | 接続文字列（endpoint+key の代替） |
+| `--database=<name>` | `COSMOS_DATABASE` | データベース名 |
+| `--disable-tls` | - | TLS 検証を無効化（エミュレータ用） |
+
+### 接続情報の優先順位
+
+接続設定は以下の順序で解決されます（最初にマッチしたものが使用されます）:
+
+1. **CLI 引数** (`--endpoint`, `--key` など)
+2. **設定ファイル** (`cosmio.config.ts`)
+3. **環境変数** (`COSMOS_ENDPOINT`, `COSMOS_KEY` など)
+
+`connectionString` または `endpoint` と `key` の両方を指定する必要があります。`database` は常に必須です。
+
+## ターゲットオプション
+
+| オプション | デフォルト | 説明 |
+|-----------|----------|------|
+| `--container=<name>` | - | pull するコンテナ（設定ファイルなしの場合は必須） |
+| `--name=<ModelName>` | コンテナ名の PascalCase | モデル名 |
+| `--output=<path>` | stdout | 出力ファイルパス |
+| `--sample-size=<n>` | `100` | サンプリングするドキュメント数 |
+| `--where=<expr>` | - | マルチモデルコンテナ用の SQL WHERE フィルタ |
+| `--enum-threshold=<n>` | `10` | enum として検出する最大ユニーク値数 |
+
+`--container` を指定した場合、設定ファイルに同じコンテナの定義があればデフォルト値として使用されます。CLI 引数はそれを上書きします。
+
+## 設定ファイルとの連携
+
+`cosmio.config.ts` が存在する場合、接続設定と pull ターゲットに使用されます。詳細は[設定](/ja/docs/introspect/config)を参照してください。
+
+```bash
+# cosmio.config.ts のすべてのターゲットを pull
+cosmio pull
+
+# 特定のコンテナを pull（設定にある場合はデフォルト値を使用）
+cosmio pull --container=users
+```
+
+## サンプリング
+
+ドキュメントは `SELECT TOP @n * FROM c` クエリで取得されます。`@n` は `sampleSize`（デフォルト: 100）です。Cosmos DB のシステムフィールド（`_rid`, `_self`, `_ts`, `_etag`, `_attachments`）は自動的に除外されます。
+
+ドキュメントが見つからない場合、`id` とパーティションキーフィールドを `z.string()` としたスケルトンモデルが生成されます。
+
+## 型推論
+
+推論エンジンはサンプリングされたドキュメントを2つのフェーズで分析します。
+
+### フェーズ 1: 統計情報の収集
+
+すべてのドキュメントの各フィールドについて、以下を追跡します:
+
+- **出現回数** -- フィールドを含むドキュメント数
+- **観測された型** -- `string`, `number`, `boolean`, `object`, `array`
+- **null の出現** -- `null` が観測されたかどうか
+- **ユニーク値** -- `enumThreshold + 1` 個まで追跡
+
+ネストされたオブジェクトと配列は深さ 10 まで再帰的に分析されます。
+
+### フェーズ 2: 型の解決
+
+統計情報は以下のルールで Zod 型に解決されます:
+
+| 条件 | Zod 出力 |
+|------|---------|
+| 全ドキュメントで単一のユニーク値 | `z.literal("value")` |
+| 2 個以上 `enumThreshold` 個以下のユニークな string/number 値 | `z.enum(["a", "b", "c"])` |
+| `enumThreshold` を超えるユニーク値 | `z.string()` / `z.number()` |
+| 複数の型が観測された | `z.union([...])` |
+| 配列フィールド | `z.array(elementType)` |
+| ネストされたオブジェクト | `z.object({...})` |
+| 一部のドキュメントにフィールドがない | `.optional()` |
+| `null` が観測された | `.nullable()` |
+
+### Discriminator 検出
+
+あるフィールドが**すべての**サンプルドキュメントで正確に1つの文字列値を持ち、すべてのドキュメントに存在する場合（optional でも nullable でもない）、discriminator として検出されます。最初に検出された discriminator が出力されます:
+
+```ts
+discriminator: { field: "type", value: "article" },
+```
+
+これは異なるドキュメントタイプが同じコンテナに格納されるマルチモデルコンテナで有用です。
+
+## WHERE フィルタでのマルチモデルコンテナ対応
+
+1つのコンテナに複数のドキュメントタイプが格納されている場合、`--where` オプションで各モデルのドキュメントをフィルタリングできます:
+
+```bash
+# article ドキュメントのみを pull
+cosmio pull --container=docs --where="c.type = 'article'" --name=Article
+
+# comment ドキュメントのみを pull
+cosmio pull --container=docs --where="c.type = 'comment'" --name=Comment
+```
+
+WHERE 式はサンプリングクエリに追加されます:
+
+```sql
+SELECT TOP @n * FROM c WHERE c.type = 'article'
+```
+
+設定ファイルでは、同じコンテナに対して複数のターゲットを定義できます:
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    database: "mydb",
+  },
+  pull: [
+    {
+      container: "docs",
+      where: "c.type = 'article'",
+      name: "Article",
+      output: "src/models/article.model.ts",
+    },
+    {
+      container: "docs",
+      where: "c.type = 'comment'",
+      name: "Comment",
+      output: "src/models/comment.model.ts",
+    },
+  ],
+});
+```
+
+## コンテナメタデータ
+
+スキーマに加えて、`cosmio pull` はコンテナのメタデータを読み取り、生成されたモデルに含めます:
+
+- **パーティションキーパス** -- `partitionKey` フィールドに使用
+- **インデックスポリシー** -- `indexingPolicy` として出力
+- **デフォルト TTL** -- `defaultTtl` として出力
+- **ユニークキーポリシー** -- `uniqueKeyPolicy` として出力
+- **コンフリクト解決ポリシー** -- `conflictResolutionPolicy` として出力
+
+## 生成される出力
+
+生成されるファイルは完全な `defineModel()` 呼び出しです:
+
+```ts
+import { z } from "zod";
+import { defineModel } from "cosmio";
+
+export const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"] as const,
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    role: z.enum(["admin", "member", "viewer"]),
+    email: z.string().nullable(),
+    profile: z.object({
+      bio: z.string().optional(),
+    }),
+  }),
+  indexingPolicy: { /* ... */ },
+});
+```
+
+### 命名規則
+
+コンテナ名は自動的に PascalCase のモデル名に変換されます:
+
+| コンテナ | モデル名 |
+|---------|---------|
+| `users` | `User` |
+| `user-events` | `UserEvent` |
+| `orderItems` | `OrderItem` |
+
+末尾の "s" は単純な単数形化により除去されます（"ss", "us", "is" で終わる場合を除く）。
+
+## エミュレータでの使い方
+
+Cosmos DB エミュレータに接続するには `--disable-tls` を使用します:
+
+```bash
+cosmio pull --disable-tls \
+  --endpoint=https://localhost:8081 \
+  --key=<emulator-key> \
+  --database=mydb \
+  --container=users
+```
+
+これにより `NODE_TLS_REJECT_UNAUTHORIZED=0` が設定され、自己署名証明書が許可されます。
+
+## dotenvx との組み合わせ
+
+[dotenvx](https://dotenvx.com/) を使用して `.env` ファイルから環境変数を読み込みます:
+
+```bash
+dotenvx run -- cosmio pull
+```
+
+接続設定を `.env` に保存している場合に便利です:
+
+```bash
+COSMOS_ENDPOINT=https://myaccount.documents.azure.com:443
+COSMOS_KEY=your-key-here
+COSMOS_DATABASE=mydb
+```
+
+## 使用例
+
+```bash
+# 設定ファイルのすべてのターゲットを pull
+cosmio pull
+
+# 単一のコンテナを stdout に出力
+cosmio pull --container=users
+
+# 出力ファイルを指定して pull
+cosmio pull --container=users --output=src/models/user.model.ts
+
+# WHERE フィルタ付きで pull
+cosmio pull --container=docs --where="c.type = 'article'" --name=Article
+
+# カスタムサンプルサイズで pull
+cosmio pull --container=users --sample-size=500
+
+# dotenvx と組み合わせ
+dotenvx run -- cosmio pull
+
+# ヘルプを表示
+cosmio pull --help
+```
+
+## npm スクリプト
+
+`package.json` に追加:
+
+```json
+{
+  "scripts": {
+    "pull:models": "cosmio pull",
+    "pull:models:env": "dotenvx run -- cosmio pull"
+  }
+}
+```

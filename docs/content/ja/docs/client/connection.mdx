@@ -1,0 +1,90 @@
+---
+title: 接続
+description: CosmioClient の接続方法、シングルトン動作、dispose()
+---
+
+`CosmioClient` は Azure の `CosmosClient` をラップし、型安全なモデルバインディングを提供します。
+
+## 3つの接続方法
+
+### 1. エンドポイント + キー
+
+```ts
+import { CosmioClient } from "cosmio";
+
+const client = new CosmioClient({
+  cosmos: {
+    endpoint: "https://your-account.documents.azure.com:443/",
+    key: "your-primary-key",
+  },
+  database: "mydb",
+});
+```
+
+### 2. 接続文字列
+
+```ts
+const client = new CosmioClient({
+  cosmos: {
+    connectionString: "AccountEndpoint=https://...;AccountKey=...;",
+  },
+  database: "mydb",
+});
+```
+
+### 3. 既存の CosmosClient
+
+独自の `CosmosClient` を使用して、カスタム設定（AAD 認証など）に対応:
+
+```ts
+import { CosmosClient } from "@azure/cosmos";
+
+const cosmosClient = new CosmosClient({
+  endpoint: "https://...",
+  aadCredentials: new DefaultAzureCredential(),
+});
+
+const client = new CosmioClient({
+  cosmos: { client: cosmosClient },
+  database: "mydb",
+});
+```
+
+## シングルトン動作
+
+Azure は 1 アプリケーションにつき 1 つの `CosmosClient` を推奨しています。Cosmio はデフォルトでこれを強制し、同じエンドポイント + データベースで `new CosmioClient(...)` を呼び出すと**同一インスタンス**を返します:
+
+```ts
+const a = new CosmioClient({ cosmos: { endpoint: "...", key: "..." }, database: "mydb" });
+const b = new CosmioClient({ cosmos: { endpoint: "...", key: "..." }, database: "mydb" });
+a === b; // true
+```
+
+テスト時にオプトアウト:
+
+```ts
+const client = new CosmioClient(options, { singleton: false });
+```
+
+## モデルのバインド
+
+```ts
+const users = client.model(UserModel); // CosmioContainer を返す
+```
+
+同じモデルは常に同じ `CosmioContainer` インスタンスを返します。
+
+## dispose()
+
+シャットダウン時やテストのティアダウンでシングルトンキャッシュからインスタンスを削除:
+
+```ts
+client.dispose();
+```
+
+## 生のアクセス
+
+```ts
+client.raw;       // 内部の CosmosClient
+client.database;  // Database 参照
+```

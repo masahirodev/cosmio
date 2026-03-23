@@ -1,0 +1,87 @@
+---
+title: OpenAPI
+description: モデル定義からOpenAPI 3.1ドキュメントを生成
+---
+
+Cosmioモデル定義からOpenAPI 3.1ドキュメントを生成します。
+
+## 基本的な使い方
+
+```ts
+import { toOpenAPI } from "cosmio";
+
+const doc = toOpenAPI([UserModel, OrderModel], {
+  title: "My API",
+  version: "2.0.0",
+});
+
+console.log(JSON.stringify(doc, null, 2));
+```
+
+出力には各モデルのスキーマ定義として `components/schemas` が含まれます。
+
+## CRUDパスの生成
+
+`generatePaths: true` を設定すると、各モデルのRESTスタイルパスが自動生成されます：
+
+```ts
+const doc = toOpenAPI([UserModel, OrderModel], {
+  title: "My API",
+  version: "1.0.0",
+  generatePaths: true,
+});
+```
+
+モデルごとに生成されるパス：
+
+| メソッド | パス | 操作 |
+|---------|------|------|
+| `GET` | `/{container}` | ドキュメント一覧 |
+| `POST` | `/{container}` | ドキュメント作成 |
+| `GET` | `/{container}/{id}` | IDでドキュメント取得 |
+| `PUT` | `/{container}/{id}` | ドキュメント置換 |
+| `DELETE` | `/{container}/{id}` | ドキュメント削除 |
+
+## オプション
+
+```ts
+interface OpenAPIOptions {
+  title?: string;          // デフォルト: "Cosmio API"
+  version?: string;        // デフォルト: "1.0.0"
+  generatePaths?: boolean; // デフォルト: false
+}
+```
+
+## スキーマのみモード
+
+`generatePaths` なしの場合、出力には `components/schemas` のみが含まれます。既存のOpenAPIドキュメントへの組み込みに便利です：
+
+```ts
+const { components } = toOpenAPI([UserModel]);
+
+// 既存のスペックにマージ
+existingSpec.components.schemas = {
+  ...existingSpec.components.schemas,
+  ...components.schemas,
+};
+```
+
+## ファイルへの書き出し
+
+```ts
+import { writeFileSync } from "node:fs";
+
+const doc = toOpenAPI([UserModel, OrderModel], { generatePaths: true });
+writeFileSync("openapi.json", JSON.stringify(doc, null, 2));
+```
+
+## CLI
+
+```bash
+npx cosmio docs --format=openapi src/models/*.ts
+npx cosmio docs --format=openapi --output=openapi.json src/models/*.ts
+```
+
+## Cosmos DB拡張
+
+`components/schemas` 内の各スキーマは、JSON Schema出力の `x-cosmio-container` と `x-cosmio-partition-key` 拡張を保持します。

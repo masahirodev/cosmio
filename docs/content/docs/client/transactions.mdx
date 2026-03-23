@@ -1,0 +1,84 @@
+---
+title: Transactions
+description: Atomic batch operations within a single partition key
+---
+
+Cosmos DB supports transactional batches -- all operations within a batch target the same partition key and either **all succeed or all fail**. No partial commits.
+
+## Basic Usage
+
+```ts
+await client.transaction("orders", ["tenant-1"], (tx) => {
+  tx.create({
+    id: "order-1",
+    tenantId: "tenant-1",
+    status: "confirmed",
+    total: 99.99,
+  });
+
+  tx.patch("inventory-1", [
+    { op: "incr", path: "/reserved", value: 1 },
+  ]);
+
+  tx.delete("cart-1");
+});
+```
+
+## Available Operations
+
+The `TransactionBuilder` supports five operations:
+
+```ts
+await client.transaction("container", ["pk-value"], (tx) => {
+  // Create a new document
+  tx.create({ id: "1", ... });
+
+  // Upsert a document
+  tx.upsert({ id: "2", ... });
+
+  // Replace an existing document
+  tx.replace("3", { id: "3", ... });
+
+  // Patch (partial update)
+  tx.patch("4", [
+    { op: "replace", path: "/status", value: "done" },
+  ]);
+
+  // Delete a document
+  tx.delete("5");
+});
+```
+
+## Same-Partition Requirement
+
+All operations in a transaction must target the **same partition key**. This is a Cosmos DB constraint, not a Cosmio limitation:
+
+```ts
+// The second argument is the partition key value(s)
+await client.transaction("users", ["acme"], (tx) => {
+  tx.create({ id: "u1", tenantId: "acme", name: "Alice" });
+  tx.create({ id: "u2", tenantId: "acme", name: "Bob" });
+});
+```
+
+## Error Handling
+
+If any operation in the batch fails, the entire batch is rolled back and a `CosmioError` is thrown:
+
+```ts
+import { ConflictError } from "cosmio";
+
+try {
+  await client.transaction("orders", ["t1"], (tx) => {
+    tx.create({ id: "existing-id", tenantId: "t1" });
+  });
+} catch (error) {
+  if (error instanceof ConflictError) {
+    console.log("Duplicate ID in batch");
+  }
+}
+```
+
+## Limits
+
+Cosmos DB transactional batches are limited to **100 operations** and a **2 MB total request size**. Plan your batches accordingly.

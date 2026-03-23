@@ -1,0 +1,103 @@
+---
+title: グローバルマイグレーション
+description: バージョン追跡とスコープフィルタによる一元的なスキーママイグレーション
+---
+
+`MigrationRegistry` は全モデルにわたるスキーママイグレーションを管理します。マイグレーションは読み取りごとに自動的に適用されます。
+
+## セットアップ
+
+```ts
+import { MigrationRegistry, CosmioClient } from "cosmio";
+
+const migrations = new MigrationRegistry({ versionField: "_v" });
+
+migrations.register({
+  name: "v2-add-fullName",
+  version: 2,
+  up: (doc) => {
+    if (doc.firstName && !doc.fullName) {
+      doc.fullName = `${doc.firstName} ${doc.lastName}`;
+      delete doc.firstName;
+      delete doc.lastName;
+    }
+    return doc;
+  },
+});
+
+migrations.register({
+  name: "v3-default-role",
+  version: 3,
+  up: (doc) => {
+    if (!doc.role) doc.role = "member";
+    return doc;
+  },
+});
+
+// CosmioClientに渡す — 全読み取りが自動マイグレーション
+const client = new CosmioClient({
+  cosmos: { endpoint: "...", key: "..." },
+  database: "mydb",
+  migrations,
+});
+```
+
+## バージョン追跡
+
+各ドキュメントのスキーマバージョンはバージョンフィールド（デフォルト: `_schemaVersion`、設定可能）で追跡されます。ドキュメントのバージョンがマイグレーションのバージョン以上の場合、そのマイグレーションはスキップされます：
+
+```ts
+// _v: 2 のドキュメントはv2マイグレーションをスキップし、v3を実行
+const doc = { _v: 2, fullName: "Alice Smith" };
+// マイグレーション後: { _v: 3, fullName: "Alice Smith", role: "member" }
+```
+
+## スコープフィルタ
+
+マイグレーションを特定のコンテナやモデルに限定できます：
+
+```ts
+migrations.register({
+  name: "v4-users-add-avatar",
+  version: 4,
+  scope: {
+    containers: ["users"],     // "users" コンテナのみに適用
+    models: ["User"],          // "User" モデルのみに適用
+  },
+  up: (doc) => {
+    if (!doc.avatarUrl) doc.avatarUrl = "/default-avatar.png";
+    return doc;
+  },
+});
+```
+
+## プロパティ
+
+```ts
+migrations.versionField;    // "_v"
+migrations.currentVersion;  // 4（登録済みの最大バージョン）
+migrations.migrations;      // readonly Migration[]（バージョン順にソート）
+```
+
+## Migrationインターフェース
+
+```ts
+interface Migration {
+  name: string;           // 一意な名前
+  version: number;        // 昇順のバージョン番号
+  scope?: {
+    containers?: string[];
+    models?: string[];
+  };
+  up: (doc: Record<string, unknown>) => Record<string, unknown>;
+}
+```
+
+## 重複バージョン保護
+
+同じバージョンのマイグレーションを2つ登録するとエラーがスローされます：
+
+```ts
+migrations.register({ name: "a", version: 2, up: (d) => d });
+migrations.register({ name: "b", version: 2, up: (d) => d }); // Error をスロー
+```

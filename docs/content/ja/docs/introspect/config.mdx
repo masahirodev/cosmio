@@ -1,0 +1,232 @@
+---
+title: 設定
+description: cosmio.config.ts で cosmio pull を設定する
+---
+
+`cosmio pull` コマンドはプロジェクトルートの `cosmio.config.ts` ファイルで設定できます。`defineConfig()` を使用すると完全な型安全性と IDE の自動補完が得られます。
+
+## セットアップ
+
+```ts
+// cosmio.config.ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    endpoint: process.env.COSMOS_ENDPOINT,
+    key: process.env.COSMOS_KEY,
+    database: "mydb",
+  },
+  pull: [
+    { container: "users", output: "src/models/user.model.ts" },
+    { container: "orders", output: "src/models/order.model.ts" },
+  ],
+});
+```
+
+## `defineConfig()`
+
+型安全な設定オブジェクトの自動補完を提供するアイデンティティ関数です。
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: { /* ... */ },
+  pull: [ /* ... */ ],
+});
+```
+
+## 対応ファイル形式
+
+設定ファイルはカレントディレクトリから以下の順序で検索されます:
+
+1. `cosmio.config.ts`
+2. `cosmio.config.js`
+3. `cosmio.config.mjs`
+
+ファイルは `connection` プロパティを含むデフォルトエクスポート（またはトップレベルエクスポート）が必要です。
+
+## `CosmioConfig`
+
+トップレベルの設定オブジェクトです。
+
+| プロパティ | 型 | 必須 | 説明 |
+|-----------|---|------|------|
+| `connection` | `CosmioConnectionConfig` | はい | Cosmos DB 接続設定 |
+| `pull` | `PullTarget[]` | いいえ | モデル生成の pull ターゲット |
+
+## `CosmioConnectionConfig`
+
+Cosmos DB の接続設定です。
+
+| プロパティ | 型 | 必須 | 説明 |
+|-----------|---|------|------|
+| `endpoint` | `string` | いいえ* | Cosmos DB エンドポイント URL |
+| `key` | `string` | いいえ* | Cosmos DB アカウントキー |
+| `connectionString` | `string` | いいえ* | 接続文字列（endpoint+key の代替） |
+| `database` | `string` | はい | データベース名 |
+| `disableTls` | `boolean` | いいえ | TLS 検証を無効化（エミュレータ用） |
+
+\* `connectionString` または `endpoint` と `key` の両方を指定する必要があります。
+
+### 接続情報の優先順位
+
+CLI 引数、設定ファイル、環境変数がすべて利用可能な場合、以下の順序で解決されます:
+
+1. **CLI 引数** (`--endpoint`, `--key`, `--connection-string`, `--database`)
+2. **設定ファイル** (`cosmio.config.ts`)
+3. **環境変数** (`COSMOS_ENDPOINT`, `COSMOS_KEY`, `COSMOS_CONNECTION_STRING`, `COSMOS_DATABASE`)
+
+## `PullTarget`
+
+単一の pull ターゲットの設定です。各ターゲットは1つのモデル定義を生成します。
+
+| プロパティ | 型 | デフォルト | 説明 |
+|-----------|---|----------|------|
+| `container` | `string` | - | Cosmos DB コンテナ名（必須） |
+| `name` | `string` | コンテナ名の PascalCase | モデル名 |
+| `output` | `string` | stdout | 出力ファイルパス |
+| `sampleSize` | `number` | `100` | サンプリングするドキュメント数 |
+| `where` | `string` | - | マルチモデルコンテナ用の SQL WHERE フィルタ |
+| `enumThreshold` | `number` | `10` | enum として検出する最大ユニーク値数 |
+
+## 設定例
+
+### 基本設定
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    endpoint: process.env.COSMOS_ENDPOINT,
+    key: process.env.COSMOS_KEY,
+    database: "mydb",
+  },
+  pull: [
+    { container: "users", output: "src/models/user.model.ts" },
+  ],
+});
+```
+
+### 接続文字列
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    connectionString: process.env.COSMOS_CONNECTION_STRING,
+    database: "mydb",
+  },
+  pull: [
+    { container: "users", output: "src/models/user.model.ts" },
+  ],
+});
+```
+
+### マルチモデルコンテナ
+
+1つのコンテナに複数のドキュメントタイプが格納されている場合、`where` フィルタで個別のターゲットを定義します:
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    endpoint: process.env.COSMOS_ENDPOINT,
+    key: process.env.COSMOS_KEY,
+    database: "cms",
+  },
+  pull: [
+    {
+      container: "documents",
+      where: "c.type = 'article'",
+      name: "Article",
+      output: "src/models/article.model.ts",
+    },
+    {
+      container: "documents",
+      where: "c.type = 'comment'",
+      name: "Comment",
+      output: "src/models/comment.model.ts",
+    },
+    {
+      container: "documents",
+      where: "c.type = 'tag'",
+      name: "Tag",
+      output: "src/models/tag.model.ts",
+      sampleSize: 50,
+    },
+  ],
+});
+```
+
+各ターゲットは個別のモデルファイルを生成し、discriminator は自動的に検出されます。
+
+### エミュレータ設定
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    endpoint: "https://localhost:8081",
+    key: "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==",
+    database: "mydb",
+    disableTls: true,
+  },
+  pull: [
+    { container: "users", output: "src/models/user.model.ts" },
+  ],
+});
+```
+
+### 環境変数との組み合わせ
+
+設定ファイルで直接環境変数を参照できます。[dotenvx](https://dotenvx.com/) と組み合わせて `.env` ファイルを読み込みます:
+
+```ts
+// cosmio.config.ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    endpoint: process.env.COSMOS_ENDPOINT,
+    key: process.env.COSMOS_KEY,
+    database: process.env.COSMOS_DATABASE ?? "mydb",
+  },
+  pull: [
+    { container: "users", output: "src/models/user.model.ts" },
+  ],
+});
+```
+
+```bash
+# .env を読み込んで pull を実行
+dotenvx run -- cosmio pull
+```
+
+### カスタムサンプルサイズと enum 閾値
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    database: "analytics",
+  },
+  pull: [
+    {
+      container: "events",
+      output: "src/models/event.model.ts",
+      sampleSize: 500,
+      enumThreshold: 20,
+    },
+  ],
+});
+```
+
+- `sampleSize: 500` -- より多くのドキュメントをサンプリングして型推論の精度を向上
+- `enumThreshold: 20` -- 20 個までのユニーク値を enum として扱い、それを超える場合は `z.string()` / `z.number()` として出力

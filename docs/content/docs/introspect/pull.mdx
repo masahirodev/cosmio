@@ -1,0 +1,265 @@
+---
+title: cosmio pull
+description: Generate model definitions by introspecting Cosmos DB containers
+---
+
+The `cosmio pull` command connects to a Cosmos DB database, samples documents from one or more containers, infers the schema, and generates `defineModel()` source files.
+
+## Usage
+
+```bash
+cosmio pull [options]
+```
+
+When run without options, it reads all pull targets from `cosmio.config.ts`. You can also specify a single container via CLI arguments.
+
+## Connection Options
+
+| Option | Environment Variable | Description |
+|--------|---------------------|-------------|
+| `--endpoint=<url>` | `COSMOS_ENDPOINT` | Cosmos DB endpoint URL |
+| `--key=<key>` | `COSMOS_KEY` | Cosmos DB account key |
+| `--connection-string=<str>` | `COSMOS_CONNECTION_STRING` | Connection string (alternative to endpoint+key) |
+| `--database=<name>` | `COSMOS_DATABASE` | Database name |
+| `--disable-tls` | - | Disable TLS verification (for emulator) |
+
+### Connection Priority
+
+Connection settings are resolved in the following order (first match wins):
+
+1. **CLI arguments** (`--endpoint`, `--key`, etc.)
+2. **Config file** (`cosmio.config.ts`)
+3. **Environment variables** (`COSMOS_ENDPOINT`, `COSMOS_KEY`, etc.)
+
+You must provide either `connectionString` or both `endpoint` and `key`. The `database` option is always required.
+
+## Target Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--container=<name>` | - | Container to pull (required without config) |
+| `--name=<ModelName>` | PascalCase of container | Model name |
+| `--output=<path>` | stdout | Output file path |
+| `--sample-size=<n>` | `100` | Number of documents to sample |
+| `--where=<expr>` | - | SQL WHERE filter for multi-model containers |
+| `--enum-threshold=<n>` | `10` | Max distinct values to detect as enum |
+
+When `--container` is specified and a matching target exists in the config file, the config values are used as defaults. CLI arguments override them.
+
+## Config Integration
+
+If `cosmio.config.ts` is present, `cosmio pull` uses it for connection settings and pull targets. See [Configuration](/docs/introspect/config) for details.
+
+```bash
+# Pull all targets defined in cosmio.config.ts
+cosmio pull
+
+# Pull a specific container (uses config defaults if the container is defined)
+cosmio pull --container=users
+```
+
+## Sampling
+
+Documents are fetched using a `SELECT TOP @n * FROM c` query, where `@n` is the `sampleSize` (default: 100). Cosmos DB system fields (`_rid`, `_self`, `_ts`, `_etag`, `_attachments`) are automatically stripped from the sampled documents.
+
+If no documents are found, a skeleton model is generated with `id` and partition key fields as `z.string()`.
+
+## Type Inference
+
+The inference engine analyzes sampled documents in two phases:
+
+### Phase 1: Collect Statistics
+
+For each field across all documents, the engine tracks:
+
+- **Presence count** -- how many documents contain the field
+- **Observed types** -- `string`, `number`, `boolean`, `object`, `array`
+- **Null occurrences** -- whether `null` was observed
+- **Distinct values** -- tracked up to `enumThreshold + 1` values
+
+Nested objects and arrays are analyzed recursively up to a depth of 10.
+
+### Phase 2: Resolve Types
+
+Statistics are resolved into Zod types using the following rules:
+
+| Condition | Zod Output |
+|-----------|------------|
+| Single distinct value across all documents | `z.literal("value")` |
+| 2 to `enumThreshold` distinct string/number values | `z.enum(["a", "b", "c"])` |
+| More than `enumThreshold` distinct values | `z.string()` / `z.number()` |
+| Mixed types observed | `z.union([...])` |
+| Array field | `z.array(elementType)` |
+| Nested object | `z.object({...})` |
+| Field missing in some documents | `.optional()` |
+| `null` observed | `.nullable()` |
+
+### Discriminator Detection
+
+If a field has exactly one distinct string value across **all** sampled documents and is present in every document (not optional, not nullable), it is detected as a possible discriminator. The first detected discriminator is emitted as:
+
+```ts
+discriminator: { field: "type", value: "article" },
+```
+
+This is useful for multi-model containers where different document types are stored together.
+
+## Multi-Model Containers with WHERE Filters
+
+When a single container stores multiple document types, use the `--where` option to filter documents for each model:
+
+```bash
+# Pull only article documents
+cosmio pull --container=docs --where="c.type = 'article'" --name=Article
+
+# Pull only comment documents
+cosmio pull --container=docs --where="c.type = 'comment'" --name=Comment
+```
+
+The WHERE expression is appended to the sampling query:
+
+```sql
+SELECT TOP @n * FROM c WHERE c.type = 'article'
+```
+
+In the config file, you can define multiple targets for the same container:
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    database: "mydb",
+  },
+  pull: [
+    {
+      container: "docs",
+      where: "c.type = 'article'",
+      name: "Article",
+      output: "src/models/article.model.ts",
+    },
+    {
+      container: "docs",
+      where: "c.type = 'comment'",
+      name: "Comment",
+      output: "src/models/comment.model.ts",
+    },
+  ],
+});
+```
+
+## Container Metadata
+
+In addition to the schema, `cosmio pull` reads container metadata and includes it in the generated model:
+
+- **Partition key paths** -- used for the `partitionKey` field
+- **Indexing policy** -- emitted as `indexingPolicy`
+- **Default TTL** -- emitted as `defaultTtl`
+- **Unique key policy** -- emitted as `uniqueKeyPolicy`
+- **Conflict resolution policy** -- emitted as `conflictResolutionPolicy`
+
+## Generated Output
+
+The generated file is a complete `defineModel()` call:
+
+```ts
+import { z } from "zod";
+import { defineModel } from "cosmio";
+
+export const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"] as const,
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    role: z.enum(["admin", "member", "viewer"]),
+    email: z.string().nullable(),
+    profile: z.object({
+      bio: z.string().optional(),
+    }),
+  }),
+  indexingPolicy: { /* ... */ },
+});
+```
+
+### Naming Convention
+
+Container names are automatically converted to PascalCase model names:
+
+| Container | Model Name |
+|-----------|-----------|
+| `users` | `User` |
+| `user-events` | `UserEvent` |
+| `orderItems` | `OrderItem` |
+
+Trailing "s" is stripped for naive singularization (except for words ending in "ss", "us", or "is").
+
+## Using with the Emulator
+
+To connect to the Cosmos DB Emulator, use `--disable-tls`:
+
+```bash
+cosmio pull --disable-tls \
+  --endpoint=https://localhost:8081 \
+  --key=<emulator-key> \
+  --database=mydb \
+  --container=users
+```
+
+This sets `NODE_TLS_REJECT_UNAUTHORIZED=0` to allow self-signed certificates.
+
+## Using with dotenvx
+
+Load environment variables from `.env` files using [dotenvx](https://dotenvx.com/):
+
+```bash
+dotenvx run -- cosmio pull
+```
+
+This is useful when connection settings are stored in `.env`:
+
+```bash
+COSMOS_ENDPOINT=https://myaccount.documents.azure.com:443
+COSMOS_KEY=your-key-here
+COSMOS_DATABASE=mydb
+```
+
+## Examples
+
+```bash
+# Pull all targets from config
+cosmio pull
+
+# Pull a single container to stdout
+cosmio pull --container=users
+
+# Pull with output file
+cosmio pull --container=users --output=src/models/user.model.ts
+
+# Pull with WHERE filter
+cosmio pull --container=docs --where="c.type = 'article'" --name=Article
+
+# Pull with custom sample size
+cosmio pull --container=users --sample-size=500
+
+# Pull with dotenvx
+dotenvx run -- cosmio pull
+
+# Show help
+cosmio pull --help
+```
+
+## npm Script
+
+Add to your `package.json`:
+
+```json
+{
+  "scripts": {
+    "pull:models": "cosmio pull",
+    "pull:models:env": "dotenvx run -- cosmio pull"
+  }
+}
+```

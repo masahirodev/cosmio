@@ -1,0 +1,84 @@
+---
+title: JSON Schema
+description: Cosmio拡張付きのモデル定義からJSON Schemaを生成
+---
+
+Cosmioモデル定義から `zod-to-json-schema` を使用してJSON Schema（2019-09）を生成します。Cosmio固有の拡張が含まれます。
+
+## 単一モデル
+
+```ts
+import { toJsonSchema } from "cosmio";
+
+const schema = toJsonSchema(UserModel);
+console.log(JSON.stringify(schema, null, 2));
+```
+
+出力：
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "title": "User",
+  "description": "Application users",
+  "x-cosmio-container": "users",
+  "x-cosmio-partition-key": ["/tenantId"],
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "name": { "type": "string" },
+    "email": { "type": "string", "format": "email" }
+  },
+  "required": ["id", "tenantId", "name", "email"]
+}
+```
+
+## 複数モデル
+
+```ts
+import { toJsonSchemas } from "cosmio";
+
+const schemas = toJsonSchemas([UserModel, OrderModel]);
+// 戻り値: { User: CosmioJsonSchema, Order: CosmioJsonSchema }
+```
+
+## x-cosmio 拡張
+
+生成される各スキーマにはカスタム拡張が含まれます：
+
+| 拡張 | 説明 |
+|------|------|
+| `x-cosmio-container` | Cosmos DBコンテナ名 |
+| `x-cosmio-partition-key` | パーティションキーパス |
+| `x-cosmio-discriminator` | ディスクリミネータのフィールドと値（設定済みの場合） |
+
+## CosmioJsonSchema型
+
+```ts
+import type { CosmioJsonSchema } from "cosmio";
+
+interface CosmioJsonSchema {
+  $schema: string;
+  title: string;
+  description?: string;
+  "x-cosmio-container": string;
+  "x-cosmio-partition-key": readonly string[];
+  "x-cosmio-discriminator"?: { field: string; value: string };
+  [key: string]: unknown;
+}
+```
+
+## CLI
+
+```bash
+npx cosmio docs --format=json-schema src/models/*.ts
+npx cosmio docs --format=json-schema --output=schemas.json src/models/*.ts
+```
+
+## ユースケース
+
+- APIドキュメントとコントラクト生成
+- スキーマからのクライアントSDK生成
+- 外部システムでのデータバリデーション
+- スキーマレジストリへのインポート

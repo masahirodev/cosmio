@@ -1,0 +1,88 @@
+---
+title: モデル定義
+description: Zod スキーマを使った型安全な Cosmos DB モデルの定義
+---
+
+`defineModel()` は型安全なモデル定義を作成します。**DB 接続は不要**です。モデルは純粋なデータ定義であり、型推論、スキーマ生成、ドキュメント化に利用できます。
+
+## 基本的な使い方
+
+```ts
+import { defineModel } from "cosmio";
+import { z } from "zod";
+
+const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    email: z.string().email(),
+    age: z.number().optional(),
+  }),
+  description: "Application users",
+});
+```
+
+## パーティションキー
+
+パーティションキーはパスの配列で定義します。単一キーと階層キーの両方をサポートしています:
+
+```ts
+// 単一パーティションキー
+partitionKey: ["/tenantId"]
+
+// 階層パーティションキー（Cosmos DB v2）
+partitionKey: ["/tenantId", "/siteId"]
+```
+
+パーティションキーの型はタプルとして自動推論されます:
+
+```ts
+// 単一 PK → [string]
+type PK = typeof UserModel._types.partitionKeyValues;
+
+// 階層 PK → [string, string]
+const InspectionModel = defineModel({
+  partitionKey: ["/tenantId", "/siteId"],
+  // ...
+});
+type PK2 = typeof InspectionModel._types.partitionKeyValues; // [string, string]
+```
+
+## 型の取り出し
+
+```ts
+// 入力型（create/upsert に渡すもの）
+type UserInput = typeof UserModel._types.input;
+
+// 出力型（Zod バリデーション後の結果）
+type UserOutput = typeof UserModel._types.output;
+
+// ドキュメント型（出力型 + Cosmos システムフィールド）
+type UserDoc = typeof UserModel._types.document;
+
+// パーティションキー値のタプル
+type UserPK = typeof UserModel._types.partitionKeyValues;
+```
+
+## モデル設定リファレンス
+
+| オプション | 型 | 必須 | 説明 |
+|--------|------|----------|-------------|
+| `name` | `string` | はい | モデルの表示名 |
+| `container` | `string` | はい | Cosmos DB コンテナ名 |
+| `partitionKey` | `[string, ...string[]]` | はい | パーティションキーのパス |
+| `schema` | `z.ZodObject` | はい | Zod スキーマ |
+| `defaults` | `Record` | いいえ | フィールドのデフォルト値 |
+| `discriminator` | `{ field, value }` | いいえ | マルチモデルコンテナ対応 |
+| `softDelete` | `{ field, autoExclude? }` | いいえ | 論理削除の設定 |
+| `migrate` | `(raw) => raw` | いいえ | 読み取り時のマイグレーション関数 |
+| `validateOnRead` | `boolean` | いいえ | 読み取り時バリデーション（デフォルト: false） |
+| `indexingPolicy` | `IndexingPolicy` | いいえ | Cosmos DB インデックスポリシー |
+| `defaultTtl` | `number` | いいえ | デフォルト TTL（秒） |
+| `uniqueKeyPolicy` | `UniqueKeyPolicy` | いいえ | ユニークキー制約 |
+| `conflictResolutionPolicy` | `ConflictResolutionPolicy` | いいえ | マルチリージョン競合解決 |
+| `description` | `string` | いいえ | ドキュメント用の説明 |

@@ -1,0 +1,126 @@
+---
+title: メトリクス (WithMetrics)
+description: WithMetrics バリアントで操作ごとの RU 消費量を追跡
+---
+
+Cosmio は主要な操作の `WithMetrics` バリアントを提供しており、結果とともに Cosmos DB の Request Unit (RU) 消費量を返します。
+
+```ts
+const users = client.model(UserModel);
+```
+
+## WithMetrics\<T\> 型
+
+すべてのメトリクスバリアントは以下の形状のオブジェクトを返します:
+
+```ts
+interface WithMetrics<T> {
+  result: T;
+  /** この操作で消費された Request Units */
+  ru: number;
+}
+```
+
+## 利用可能なメソッド
+
+### createWithMetrics()
+
+```ts
+const { result: user, ru } = await users.createWithMetrics({
+  id: "u1",
+  tenantId: "acme",
+  name: "Alice",
+  email: "alice@acme.com",
+});
+console.log(`ユーザー作成、コスト: ${ru} RU`);
+```
+
+### findByIdWithMetrics()
+
+```ts
+const { result: user, ru } = await users.findByIdWithMetrics("u1", ["acme"]);
+if (user) {
+  console.log(`ユーザー読み取り、コスト: ${ru} RU`);
+}
+```
+
+### upsertWithMetrics()
+
+```ts
+const { result: user, ru } = await users.upsertWithMetrics({
+  id: "u1",
+  tenantId: "acme",
+  name: "Alice Updated",
+  email: "alice@acme.com",
+});
+console.log(`ユーザー upsert、コスト: ${ru} RU`);
+```
+
+### deleteWithMetrics()
+
+```ts
+const { result, ru } = await users.deleteWithMetrics("u1", ["acme"]);
+console.log(`ユーザー削除、コスト: ${ru} RU`);
+// result は undefined (void)
+```
+
+## RU モニタリングパターン
+
+リクエスト全体の累積 RU を追跡し、コストの高い操作を検出します:
+
+```ts
+async function handleRequest(req: Request) {
+  let totalRU = 0;
+
+  const { result: user, ru: readRU } = await users.findByIdWithMetrics(
+    req.params.id,
+    [req.params.tenantId],
+  );
+  totalRU += readRU;
+
+  const { ru: writeRU } = await users.upsertWithMetrics({
+    ...user,
+    name: req.body.name,
+  });
+  totalRU += writeRU;
+
+  console.log(`リクエスト合計 RU: ${totalRU}`);
+  return { status: 200, jsonBody: user };
+}
+```
+
+### エンドポイントごとの RU ログ
+
+```ts
+app.use(async (req, res, next) => {
+  const start = Date.now();
+  let totalRU = 0;
+
+  // 操作をラップして RU を蓄積
+  const { result, ru } = await users.findByIdWithMetrics(req.params.id, [req.params.tenantId]);
+  totalRU += ru;
+
+  console.log({
+    method: req.method,
+    path: req.path,
+    ru: totalRU,
+    duration: Date.now() - start,
+  });
+});
+```
+
+## キャッシュヒット時: ru = 0
+
+[リクエストスコープキャッシュ](/ja/docs/client/cache)を `scope()` で使用している場合、キャッシュヒット時は `ru: 0` が返されます:
+
+```ts
+const scoped = users.scope();
+
+const { ru: firstRU } = await scoped.findByIdWithMetrics("u1", ["acme"]);
+// firstRU → 例: 1.0（実際の Cosmos DB 読み取り）
+
+const { ru: secondRU } = await scoped.findByIdWithMetrics("u1", ["acme"]);
+// secondRU → 0（キャッシュから提供）
+```
+
+これにより、キャッシュが期待通りに動作しているかを簡単に検証でき、実際の RU 削減量を測定できます。

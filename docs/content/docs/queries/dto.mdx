@@ -1,0 +1,178 @@
+---
+title: DTO (Data Transfer Object)
+description: Strip or pick fields from query results with named DTOs and project-wide policies
+---
+
+Cosmio provides a built-in DTO layer that lets you control which fields are exposed to API consumers. DTOs are defined declaratively on the model, validated by Zod at runtime, and fully type-safe.
+
+## Defining DTOs on a Model
+
+Add a `dto` map to `defineModel()`. Each entry is a named DTO with either **omit** (blocklist) or **pick** (allowlist):
+
+```ts
+import { z } from "zod";
+import { defineModel } from "cosmio";
+
+const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    email: z.string(),
+    passwordHash: z.string(),
+    internalScore: z.number(),
+    createdAt: z.string(),
+  }),
+  dto: {
+    api: { omit: ["passwordHash", "internalScore"] as const },
+    admin: { omit: ["passwordHash"] as const },
+    public: { pick: ["id", "name"] as const },
+  },
+});
+```
+
+- **omit** removes the listed fields and keeps everything else.
+- **pick** keeps only the listed fields and removes everything else.
+- `as const` is required for correct type inference.
+- Fields referenced in `omit` / `pick` are validated against the schema at model creation time. A typo throws immediately.
+
+## model.toDto()
+
+Convert a single document to a named DTO shape:
+
+```ts
+const apiUser = UserModel.toDto("api", rawDoc);
+// => { id, tenantId, name, email, createdAt }
+//    passwordHash and internalScore are stripped
+
+const publicUser = UserModel.toDto("public", rawDoc);
+// => { id, name }
+```
+
+Under the hood, `toDto()` calls `zodSchema.parse()` on the derived schema, so unknown fields (including Cosmos DB system fields like `_rid`, `_self`, `_ts`, `_etag`) are always stripped.
+
+Passing an undefined DTO name throws:
+
+```ts
+UserModel.toDto("nonExistent", rawDoc);
+// Error: DTO "nonExistent" is not defined in model "User"
+```
+
+## QueryBuilder.asDto()
+
+Apply a DTO transformation to query results directly in the fluent query builder. The return type is narrowed to the DTO shape:
+
+```ts
+const users = client.model(UserModel);
+
+const apiUsers = await users
+  .find(["acme"])
+  .where({ status: "active" })
+  .asDto("api")
+  .run();
+// => Array of { id, tenantId, name, email, createdAt }
+```
+
+`asDto()` can be chained with all other query builder methods (`where`, `orderBy`, `limit`, etc.). The SQL query itself is unchanged — DTO transformation happens after fetch, via Zod parse.
+
+## Type Inference
+
+Extract the DTO output type using `_types.dto`:
+
+```ts
+type ApiUser = typeof UserModel._types.dto.api;
+// => { id: string; tenantId: string; name: string; email: string; createdAt: string }
+
+type PublicUser = typeof UserModel._types.dto.public;
+// => { id: string; name: string }
+```
+
+The underlying utility types are:
+
+- **`DtoRule<TSchema>`** — a single rule: `{ omit: [...] }` or `{ pick: [...] }`.
+- **`DtoMap<TSchema>`** — a named map of DTO rules (e.g. `{ api: ..., public: ... }`).
+- **`ResolveDtoRule<TSchema, TRule>`** — resolves one rule to `Omit<...>` or `Pick<...>`.
+- **`ResolveDtoMap<TSchema, TDtoMap>`** — resolves the full map to a record of output types.
+
+## DtoPolicy — Project-Wide Field Omission
+
+`defineDtoPolicy()` creates a reusable policy that strips fields globally across all models. This is useful for removing Cosmos DB system fields (`_rid`, `_self`, `_ts`, `_etag`) or internal fields from every API response.
+
+```ts
+import { defineDtoPolicy } from "cosmio";
+
+export const dtoPolicy = defineDtoPolicy({
+  globalOmit: ["_rid", "_self", "_ts", "_etag"],
+});
+```
+
+### policy.apply()
+
+Applies the model's named DTO first, then strips the global fields:
+
+```ts
+const apiUser = dtoPolicy.apply(UserModel, "api", rawDoc);
+// 1. UserModel.toDto("api", rawDoc) — strips passwordHash, internalScore
+// 2. Policy removes _rid, _self, _ts, _etag from the result
+```
+
+### policy.strip()
+
+Strips only the global (and per-model override) fields, without applying any model DTO:
+
+```ts
+const cleaned = dtoPolicy.strip(rawDoc);
+// Removes _rid, _self, _ts, _etag — keeps all other fields
+```
+
+You can pass an optional model name to apply per-model overrides:
+
+```ts
+const cleaned = dtoPolicy.strip(rawDoc, "Session");
+```
+
+## Per-Model Overrides
+
+The `overrides` option lets you customize the policy per model:
+
+- **`include`** — re-allows fields that are in `globalOmit` for this model.
+- **`omit`** — adds extra fields to strip for this model.
+
+```ts
+export const dtoPolicy = defineDtoPolicy({
+  globalOmit: ["_rid", "_self", "_ts", "_etag"],
+  overrides: {
+    AuditLog: { include: ["_ts"] },          // keep _ts for audit logs
+    Session:  { omit: ["sessionToken"] },    // additionally strip sessionToken
+  },
+});
+```
+
+With this configuration:
+
+| Model | Effective omit set |
+| --- | --- |
+| (default) | `_rid`, `_self`, `_ts`, `_etag` |
+| AuditLog | `_rid`, `_self`, `_etag` (\_ts re-included) |
+| Session | `_rid`, `_self`, `_ts`, `_etag`, `sessionToken` |
+
+You can combine `include` and `omit` in a single override:
+
+```ts
+overrides: {
+  Special: { include: ["_ts", "_etag"], omit: ["secretField"] },
+}
+// Effective: _rid, _self, secretField (keeps _ts and _etag)
+```
+
+### resolvedOmitFor()
+
+Inspect the effective omit set for a specific model:
+
+```ts
+dtoPolicy.resolvedOmitFor("AuditLog").has("_ts"); // false (re-included)
+dtoPolicy.resolvedOmitFor("Session").has("sessionToken"); // true (extra omit)
+```

@@ -1,0 +1,85 @@
+---
+title: リポジトリパターン
+description: defineRepository() によるカスタムビジネスロジックメソッド
+---
+
+`defineRepository()` は、標準の CRUD 操作の上にカスタムクエリメソッドやビジネスロジックを追加します。
+
+## リポジトリの定義
+
+```ts
+import { defineRepository } from "cosmio";
+
+const UserRepo = defineRepository(UserModel, (container) => ({
+  findByEmail: (tenant: string, email: string) =>
+    container
+      .find([tenant])
+      .where("email", "=", email)
+      .exec()
+      .then((r) => r[0]),
+
+  findActive: (tenant: string) =>
+    container
+      .find([tenant])
+      .where({ status: "active" })
+      .exec(),
+
+  deactivate: async (id: string, tenant: string) => {
+    await container.patch(id, [tenant], [
+      { op: "replace", path: "/status", value: "inactive" },
+    ]);
+  },
+}));
+```
+
+## リポジトリの使用
+
+リポジトリファクトリに `CosmioContainer` を渡します。ベースの CRUD メソッドはすべて引き続き利用できます:
+
+```ts
+const users = UserRepo(client.model(UserModel));
+
+// カスタムメソッド
+const alice = await users.findByEmail("acme", "alice@acme.com");
+const active = await users.findActive("acme");
+await users.deactivate("u1", "acme");
+
+// ベース CRUD もそのまま使える
+await users.create({
+  id: "u2",
+  tenantId: "acme",
+  name: "Bob",
+  email: "bob@acme.com",
+});
+
+const user = await users.findById("u2", ["acme"]);
+```
+
+## 型安全性
+
+返却されるオブジェクトは `CosmioContainer` とカスタムメソッドの交差型です。両方のオートコンプリートが完全に機能します:
+
+```ts
+// TypeScript はカスタムメソッドと CRUD メソッドの両方を認識
+users.findByEmail   // (tenant: string, email: string) => Promise<UserDoc | undefined>
+users.create        // (doc: UserInput) => Promise<UserDoc>
+users.findById      // (id: string, pk: [string]) => Promise<UserDoc | undefined>
+```
+
+## リポジトリの整理
+
+モデルと一緒にリポジトリを定義するのが一般的なパターンです:
+
+```ts
+// models/user.ts
+export const UserModel = defineModel({ ... });
+
+export const UserRepo = defineRepository(UserModel, (c) => ({
+  findByEmail: (tenant: string, email: string) =>
+    c.find([tenant]).where("email", "=", email).exec().then(r => r[0]),
+}));
+
+// app.ts
+import { UserModel, UserRepo } from "./models/user.js";
+const users = UserRepo(client.model(UserModel));
+```

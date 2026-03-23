@@ -1,0 +1,100 @@
+---
+title: コンテナ設定
+description: TTL、ユニークキー、競合解決、インデックスポリシー、ensureContainer()
+---
+
+モデル定義には Cosmos DB のコンテナレベルの設定を含めることができます。これらは `ensureContainer()` の呼び出し時に適用されます。
+
+## TTL（Time to Live）
+
+```ts
+const EventModel = defineModel({
+  name: "Event",
+  container: "events",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    action: z.string(),
+    ttl: z.number().optional(),
+  }),
+  defaultTtl: 2592000, // 30日（秒単位）
+});
+```
+
+`defaultTtl: -1` を設定すると、デフォルトの有効期限なしでコンテナの TTL を有効化できます。個々のドキュメントで独自の `ttl` フィールドを設定できます。
+
+## ユニークキーポリシー
+
+```ts
+const UserModel = defineModel({
+  // ...
+  uniqueKeyPolicy: {
+    uniqueKeys: [
+      { paths: ["/email"] },
+      { paths: ["/tenantId", "/username"] },
+    ],
+  },
+});
+```
+
+ユニークキーは論理パーティション内で強制されます。異なるパーティションのドキュメントは同じユニークキー値を持つことができます。
+
+## 競合解決ポリシー
+
+マルチリージョン書き込みのシナリオ向け:
+
+```ts
+const OrderModel = defineModel({
+  // ...
+  conflictResolutionPolicy: {
+    mode: "LastWriterWins",
+    conflictResolutionPath: "/_ts",
+  },
+});
+```
+
+## インデックスポリシー
+
+```ts
+const InspectionModel = defineModel({
+  // ...
+  indexingPolicy: {
+    indexingMode: "consistent",
+    includedPaths: [{ path: "/*" }],
+    excludedPaths: [
+      { path: "/body/*" },
+      { path: '/"_etag"/?' },
+    ],
+    compositeIndexes: [
+      [
+        { path: "/status", order: "ascending" },
+        { path: "/createdAt", order: "descending" },
+      ],
+    ],
+  },
+});
+```
+
+## ensureContainer()
+
+コンテナが存在しない場合に作成し、モデルの全設定を適用します:
+
+```ts
+import { ensureContainer, ensureContainers } from "cosmio";
+
+// 単一モデル
+await ensureContainer(client.database, UserModel);
+
+// スループットオプション付き
+await ensureContainer(client.database, UserModel, {
+  maxThroughput: 4000, // 最大 4000 RU/s でオートスケール
+});
+
+// 複数モデル（コンテナ名で重複排除）
+await ensureContainers(client.database, [
+  ArticleModel,
+  CommentModel,
+  UserModel,
+]);
+```

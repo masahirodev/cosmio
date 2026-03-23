@@ -1,0 +1,93 @@
+---
+title: Analyzer
+description: Rule-based model analysis with Azure Advisor categories, RU estimates, and cost breakdowns
+---
+
+`analyzeModels()` performs rule-based analysis of your data models and access patterns, following the Azure Advisor framework.
+
+## Basic Usage
+
+```ts
+import { analyzeModels } from "cosmio";
+
+const report = analyzeModels([
+  {
+    model: UserModel,
+    patterns: [
+      {
+        name: "Get user by ID",
+        operation: "point-read",
+        rps: 100,
+        avgDocumentSizeBytes: 2048,
+      },
+      {
+        name: "List users by tenant",
+        operation: "query",
+        rps: 20,
+        fields: [
+          { field: "tenantId", usage: "filter" },
+          { field: "createdAt", usage: "sort" },
+        ],
+        expectedResultCount: 50,
+      },
+    ],
+  },
+]);
+```
+
+## Report Structure
+
+```ts
+interface AdvisorReport {
+  findings: AdvisorFinding[];              // Issues and suggestions
+  ruEstimates: RUEstimate[];               // Per-pattern RU estimates
+  costBreakdowns: CostBreakdown[];         // Per-model cost analysis
+  designPatternRecommendations: DesignPatternRecommendation[];
+  summary: string;                         // Human-readable summary
+}
+```
+
+## Azure Advisor Categories
+
+Findings are categorized into five pillars:
+
+| Category | Example Findings |
+|----------|-----------------|
+| **Performance** | Hot partitions (PK001), cross-partition queries (QRY001), missing indexes (IDX001) |
+| **Cost** | Large documents (CST001), default indexing policy (CST002) |
+| **Reliability** | Shared container without discriminator (REL001) |
+| **Operational Excellence** | High write rate without TTL (OPS001) |
+| **Security** | (Detected by AI advisor) |
+
+## RU Estimates
+
+Each access pattern receives an estimated RU cost:
+
+| Operation | Estimate Formula |
+|-----------|-----------------|
+| Point read | ~1 RU per 1KB |
+| Create/Upsert | ~5.5 RU per 1KB (includes indexing) |
+| Delete | ~5 RU per 1KB |
+| Patch | ~3 RU per 1KB |
+| Query (single-partition) | ~0.15 RU per 1KB per result |
+| Query (cross-partition) | ~0.3 RU per 1KB per result + fan-out |
+
+## Cost Breakdowns
+
+```ts
+for (const cost of report.costBreakdowns) {
+  console.log(`${cost.model}: ${cost.totalRUPerSecond} RU/s`);
+  console.log(`  Estimated: $${cost.estimatedMonthlyCostUSD}/month`);
+  console.log(`  Recommendation: ${cost.throughputRecommendation}`);
+  // throughputRecommendation: "serverless" | "autoscale" | "provisioned"
+}
+```
+
+## Severity Levels
+
+| Severity | Meaning |
+|----------|---------|
+| `error` | Must fix -- causes failures or scan queries |
+| `warning` | Should fix -- performance or cost impact |
+| `suggestion` | Nice to have -- optimization opportunity |
+| `info` | Informational -- awareness item |

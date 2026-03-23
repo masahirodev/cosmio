@@ -1,0 +1,87 @@
+---
+title: OpenAPI
+description: Generate OpenAPI 3.1 documents from model definitions
+---
+
+Generate an OpenAPI 3.1 document from Cosmio model definitions.
+
+## Basic Usage
+
+```ts
+import { toOpenAPI } from "cosmio";
+
+const doc = toOpenAPI([UserModel, OrderModel], {
+  title: "My API",
+  version: "2.0.0",
+});
+
+console.log(JSON.stringify(doc, null, 2));
+```
+
+Output includes `components/schemas` with each model as a schema definition.
+
+## Generate CRUD Paths
+
+Set `generatePaths: true` to auto-generate REST-style paths for each model:
+
+```ts
+const doc = toOpenAPI([UserModel, OrderModel], {
+  title: "My API",
+  version: "1.0.0",
+  generatePaths: true,
+});
+```
+
+Generated paths per model:
+
+| Method | Path | Operation |
+|--------|------|-----------|
+| `GET` | `/{container}` | List documents |
+| `POST` | `/{container}` | Create a document |
+| `GET` | `/{container}/{id}` | Get document by ID |
+| `PUT` | `/{container}/{id}` | Replace a document |
+| `DELETE` | `/{container}/{id}` | Delete a document |
+
+## Options
+
+```ts
+interface OpenAPIOptions {
+  title?: string;          // default: "Cosmio API"
+  version?: string;        // default: "1.0.0"
+  generatePaths?: boolean; // default: false
+}
+```
+
+## Schema-Only Mode
+
+Without `generatePaths`, the output contains only `components/schemas` -- useful for embedding in an existing OpenAPI document:
+
+```ts
+const { components } = toOpenAPI([UserModel]);
+
+// Merge into your existing spec
+existingSpec.components.schemas = {
+  ...existingSpec.components.schemas,
+  ...components.schemas,
+};
+```
+
+## Write to File
+
+```ts
+import { writeFileSync } from "node:fs";
+
+const doc = toOpenAPI([UserModel, OrderModel], { generatePaths: true });
+writeFileSync("openapi.json", JSON.stringify(doc, null, 2));
+```
+
+## CLI
+
+```bash
+npx cosmio docs --format=openapi src/models/*.ts
+npx cosmio docs --format=openapi --output=openapi.json src/models/*.ts
+```
+
+## Cosmos DB Extensions
+
+Each schema in `components/schemas` preserves the `x-cosmio-container` and `x-cosmio-partition-key` extensions from the JSON Schema output.

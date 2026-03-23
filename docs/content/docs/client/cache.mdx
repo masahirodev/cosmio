@@ -1,0 +1,75 @@
+---
+title: Request-Scoped Cache
+description: scope() for per-request caching to reduce RU consumption
+---
+
+Cosmio provides an opt-in read cache via `scope()`. Caching is **not enabled by default** -- you explicitly create a scoped instance per request.
+
+## Why Not Default?
+
+Cosmos DB point reads are already fast (1 RU for 1KB). A global cache risks stale data across requests. The `scope()` pattern ties cache lifetime to a single request or function invocation, avoiding stale reads.
+
+## Basic Usage
+
+```ts
+const users = client.model(UserModel);
+
+async function handleRequest(userId: string, tenantId: string) {
+  // Create a request-scoped instance with caching
+  const scoped = users.scope();
+
+  const user = await scoped.findById(userId, [tenantId]); // reads from Cosmos DB
+  // ... some business logic ...
+  const same = await scoped.findById(userId, [tenantId]); // cached — 0 RU
+
+  // scope is GC'd when function returns → cache gone
+}
+```
+
+## Azure Functions Example
+
+```ts
+import { CosmioClient } from "cosmio";
+
+const client = new CosmioClient({
+  cosmos: { connectionString: process.env.COSMOS_CONNECTION! },
+  database: "mydb",
+});
+
+export async function httpTrigger(req: HttpRequest): Promise<HttpResponseInit> {
+  // Each invocation gets its own cache
+  const users = client.model(UserModel).scope();
+  const orders = client.model(OrderModel).scope();
+
+  const user = await users.findById(req.params.userId, [req.params.tenantId]);
+  // ... later in the same request ...
+  const sameUser = await users.findById(req.params.userId, [req.params.tenantId]);
+  // ↑ 0 RU — served from cache
+
+  return { status: 200, jsonBody: user };
+}
+```
+
+## Cache Configuration
+
+The underlying `ReadCache` supports TTL and size limits:
+
+- Default TTL: 30 seconds
+- Default max entries: 1000
+
+## Cache Invalidation
+
+Writes (`upsert`, `replace`) automatically invalidate the corresponding cache entry within the same scope:
+
+```ts
+const scoped = users.scope();
+const user = await scoped.findById("u1", ["acme"]);   // cached
+await scoped.upsert({ ...user, name: "Updated" });     // invalidates cache
+const fresh = await scoped.findById("u1", ["acme"]);   // reads from DB
+```
+
+## When to Use
+
+- **Azure Functions / serverless** -- reduce RU for repeated reads within a single invocation
+- **API request handlers** -- avoid duplicate reads in middleware chains
+- **Batch processing** -- cache reference data across iterations

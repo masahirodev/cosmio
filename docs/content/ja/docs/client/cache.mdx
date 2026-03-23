@@ -1,0 +1,75 @@
+---
+title: リクエストスコープキャッシュ
+description: scope() によるリクエスト単位のキャッシュで RU 消費を削減
+---
+
+Cosmio は `scope()` によるオプトインの読み取りキャッシュを提供します。キャッシュは**デフォルトでは無効**です。リクエストごとにスコープ付きインスタンスを明示的に作成します。
+
+## なぜデフォルトで無効なのか？
+
+Cosmos DB のポイントリードは既に高速です（1KB あたり 1 RU）。グローバルキャッシュはリクエスト間でデータの不整合リスクがあります。`scope()` パターンはキャッシュの寿命を単一のリクエストや関数呼び出しに紐づけ、古いデータの読み取りを防ぎます。
+
+## 基本的な使い方
+
+```ts
+const users = client.model(UserModel);
+
+async function handleRequest(userId: string, tenantId: string) {
+  // リクエストスコープのキャッシュ付きインスタンスを作成
+  const scoped = users.scope();
+
+  const user = await scoped.findById(userId, [tenantId]); // Cosmos DB から読み取り
+  // ... ビジネスロジック ...
+  const same = await scoped.findById(userId, [tenantId]); // キャッシュから — 0 RU
+
+  // 関数が返ると scope は GC される → キャッシュ消滅
+}
+```
+
+## Azure Functions での例
+
+```ts
+import { CosmioClient } from "cosmio";
+
+const client = new CosmioClient({
+  cosmos: { connectionString: process.env.COSMOS_CONNECTION! },
+  database: "mydb",
+});
+
+export async function httpTrigger(req: HttpRequest): Promise<HttpResponseInit> {
+  // 各呼び出しが独自のキャッシュを取得
+  const users = client.model(UserModel).scope();
+  const orders = client.model(OrderModel).scope();
+
+  const user = await users.findById(req.params.userId, [req.params.tenantId]);
+  // ... 同じリクエスト内の後続処理 ...
+  const sameUser = await users.findById(req.params.userId, [req.params.tenantId]);
+  // ↑ 0 RU — キャッシュから提供
+
+  return { status: 200, jsonBody: user };
+}
+```
+
+## キャッシュ設定
+
+内部の `ReadCache` は TTL とサイズ制限をサポートしています:
+
+- デフォルト TTL: 30 秒
+- デフォルト最大エントリ数: 1000
+
+## キャッシュの無効化
+
+書き込み操作（`upsert`、`replace`）は、同じスコープ内の対応するキャッシュエントリを自動的に無効化します:
+
+```ts
+const scoped = users.scope();
+const user = await scoped.findById("u1", ["acme"]);   // キャッシュに格納
+await scoped.upsert({ ...user, name: "Updated" });     // キャッシュを無効化
+const fresh = await scoped.findById("u1", ["acme"]);   // DB から読み取り
+```
+
+## 使いどころ
+
+- **Azure Functions / サーバーレス** — 単一呼び出し内の繰り返し読み取りで RU を削減
+- **API リクエストハンドラー** — ミドルウェアチェーンでの重複読み取りを回避
+- **バッチ処理** — イテレーション間で参照データをキャッシュ

@@ -1,0 +1,107 @@
+---
+title: Error Handling
+description: Typed error classes and automatic Cosmos DB error mapping
+---
+
+Cosmio wraps Cosmos DB errors into typed error classes for predictable error handling.
+
+## Error Classes
+
+All errors extend `CosmioError`:
+
+```ts
+import {
+  CosmioError,
+  NotFoundError,
+  ConflictError,
+  PreconditionFailedError,
+  TooManyRequestsError,
+  ValidationError,
+} from "cosmio";
+```
+
+| Class | Code | HTTP Status | When |
+|-------|------|-------------|------|
+| `NotFoundError` | `NOT_FOUND` | 404 | Document does not exist |
+| `ConflictError` | `CONFLICT` | 409 | Duplicate ID on create |
+| `PreconditionFailedError` | `PRECONDITION_FAILED` | 412 | ETag mismatch on replace |
+| `TooManyRequestsError` | `TOO_MANY_REQUESTS` | 429 | Rate limited |
+| `ValidationError` | `VALIDATION_ERROR` | -- | Zod schema validation failed |
+| `CosmioError` | `COSMOS_ERROR` | varies | Other Cosmos DB errors |
+
+## Catching Errors
+
+```ts
+import { ConflictError, NotFoundError, TooManyRequestsError } from "cosmio";
+
+try {
+  await users.create({ id: "u1", tenantId: "acme", name: "Alice", email: "a@a.com" });
+} catch (error) {
+  if (error instanceof ConflictError) {
+    console.log("User already exists");
+  } else if (error instanceof TooManyRequestsError) {
+    console.log(`Rate limited, retry after ${error.retryAfterMs}ms`);
+  }
+}
+```
+
+## ValidationError
+
+Thrown when Zod validation fails on `create()`, `upsert()`, or `replace()`:
+
+```ts
+import { ValidationError } from "cosmio";
+
+try {
+  await users.create({ id: "u1", tenantId: "acme", name: "", email: "invalid" });
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.log(error.issues); // Zod issue array
+  }
+}
+```
+
+## mapCosmosError()
+
+Converts raw Cosmos DB errors to typed `CosmioError` instances. Used internally but available for custom operations:
+
+```ts
+import { mapCosmosError } from "cosmio";
+
+try {
+  await users.raw.items.create({ id: "1", bad: "data" });
+} catch (error) {
+  const mapped = mapCosmosError(error);
+  console.log(mapped.code);       // "CONFLICT" | "NOT_FOUND" | ...
+  console.log(mapped.statusCode); // 409, 404, etc.
+}
+```
+
+## Error Properties
+
+```ts
+class CosmioError extends Error {
+  readonly code: CosmioErrorCode;   // "NOT_FOUND" | "CONFLICT" | ...
+  readonly statusCode?: number;     // HTTP status code
+}
+
+class TooManyRequestsError extends CosmioError {
+  readonly retryAfterMs?: number;   // Retry delay from Cosmos DB
+}
+
+class ValidationError extends CosmioError {
+  readonly issues: unknown[];       // Zod validation issues
+}
+```
+
+## Error Code Type
+
+```ts
+type CosmioErrorCode =
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "PRECONDITION_FAILED"
+  | "TOO_MANY_REQUESTS"
+  | "VALIDATION_ERROR"
+  | "COSMOS_ERROR";
+```

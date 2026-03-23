@@ -1,0 +1,91 @@
+---
+title: 生SQL クエリ
+description: パラメータ化されたSqlQuerySpecによるCosmos DB SQLクエリの実行
+---
+
+クエリを完全に制御するには、生のSQL文字列または `SqlQuerySpec` を使って `query()` メソッドを呼び出します。
+
+## シンプルな文字列クエリ
+
+```ts
+const users = client.model(UserModel);
+
+const results = await users.query(
+  "SELECT * FROM c WHERE c.role = 'admin'",
+  ["acme"], // 任意のパーティションキー
+);
+```
+
+## パラメータ化クエリ
+
+インジェクション防止とプランキャッシュの改善のため、常にパラメータを使用してください：
+
+```ts
+const results = await users.query(
+  {
+    query: "SELECT * FROM c WHERE c.role = @role AND c.age >= @minAge",
+    parameters: [
+      { name: "@role", value: "member" },
+      { name: "@minAge", value: 18 },
+    ],
+  },
+  ["acme"],
+);
+```
+
+## クロスパーティションクエリ
+
+パーティションキーを省略すると、全パーティションにまたがるクエリを実行します：
+
+```ts
+const allAdmins = await users.query({
+  query: "SELECT * FROM c WHERE c.role = @role",
+  parameters: [{ name: "@role", value: "admin" }],
+});
+```
+
+## 集計クエリ
+
+```ts
+const counts = await users.query({
+  query: "SELECT c.role, COUNT(1) AS count FROM c GROUP BY c.role",
+});
+```
+
+## プロジェクション
+
+```ts
+const names = await users.query(
+  "SELECT c.id, c.name, c.email FROM c",
+  ["acme"],
+);
+```
+
+## SqlQuerySpec型の使用
+
+Azure SDKから `SqlQuerySpec` をインポートすると完全な型安全性が得られます：
+
+```ts
+import type { SqlQuerySpec } from "@azure/cosmos";
+
+const spec: SqlQuerySpec = {
+  query: "SELECT * FROM c WHERE c.status = @status ORDER BY c._ts DESC",
+  parameters: [{ name: "@status", value: "active" }],
+};
+
+const results = await users.query(spec, ["acme"]);
+```
+
+## 読み取りパイプライン
+
+`query()` の結果は他の操作と同じ読み取りパイプラインを通過します：
+1. グローバルマイグレーション（設定済みの場合）
+2. モデルレベルの `migrate` 関数（設定済みの場合）
+3. `validateOnRead`（有効な場合）
+
+## 使用場面
+
+- クエリビルダーでは表現できない複雑な集計クエリ
+- Cosmos DB関数（`ST_DISTANCE`、`ARRAY_CONTAINS`、`IS_DEFINED` など）
+- `GROUP BY`、`DISTINCT`、サブクエリ
+- Cosmos DBに送信するSQLの完全な制御が必要な場合

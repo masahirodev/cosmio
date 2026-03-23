@@ -1,0 +1,25 @@
+{
+  "name": "cosmio-docs",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "fumadocs-core": "^15.0.0",
+    "fumadocs-mdx": "^12.0.0",
+    "fumadocs-ui": "^15.0.0",
+    "fumadocs-typescript": "^4.0.0",
+    "fumadocs-openapi": "^6.0.0",
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "~5.5.0"
+  }
+}

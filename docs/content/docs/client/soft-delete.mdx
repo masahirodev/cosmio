@@ -1,0 +1,91 @@
+---
+title: Soft Delete
+description: Logical deletion with auto-exclusion, restore, and hard delete
+---
+
+Soft delete marks documents as deleted instead of physically removing them. Configure it in the model definition.
+
+## Configuration
+
+```ts
+const TaskModel = defineModel({
+  name: "Task",
+  container: "tasks",
+  partitionKey: ["/projectId"],
+  schema: z.object({
+    id: z.string(),
+    projectId: z.string(),
+    title: z.string(),
+    deletedAt: z.number().optional(),
+  }),
+  softDelete: {
+    field: "deletedAt",      // field to store deletion timestamp
+    autoExclude: true,       // default: true — auto-exclude from queries
+  },
+});
+```
+
+## delete()
+
+When soft delete is configured, `delete()` sets the timestamp field via a patch operation:
+
+```ts
+const tasks = client.model(TaskModel);
+await tasks.delete("t1", ["proj-1"]);
+// Document now has deletedAt: 1711234567890
+```
+
+## hardDelete()
+
+Physically remove a document, bypassing soft delete:
+
+```ts
+await tasks.hardDelete("t1", ["proj-1"]);
+```
+
+## restore()
+
+Remove the deletion timestamp to restore a soft-deleted document:
+
+```ts
+const restored = await tasks.restore("t1", ["proj-1"]);
+```
+
+## Auto-Exclusion in Queries
+
+With `autoExclude: true` (the default), `find()`, `findById()`, and the query builder automatically filter out soft-deleted documents:
+
+```ts
+// Only returns non-deleted tasks
+const results = await tasks.find(["proj-1"]).exec();
+
+// findById returns undefined for soft-deleted documents
+const task = await tasks.findById("t1", ["proj-1"]); // undefined if deleted
+```
+
+## findWithDeleted()
+
+Query including soft-deleted documents:
+
+```ts
+const all = await tasks.findWithDeleted(["proj-1"]).exec();
+// Returns both active and soft-deleted documents
+```
+
+## Combining with TTL
+
+Use `defaultTtl` to auto-purge soft-deleted documents after a retention period:
+
+```ts
+const TaskModel = defineModel({
+  // ...
+  softDelete: { field: "deletedAt" },
+  defaultTtl: -1, // enable TTL on the container
+});
+
+// On delete, also set ttl for auto-purge after 30 days
+await tasks.patch("t1", ["proj-1"], [
+  { op: "set", path: "/deletedAt", value: Date.now() },
+  { op: "set", path: "/ttl", value: 2592000 },
+]);
+```

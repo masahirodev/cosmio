@@ -1,0 +1,42 @@
+---
+title: Installation
+description: Install Cosmio and its peer dependencies
+---
+
+```bash
+npm install cosmio zod @azure/cosmos
+```
+
+`zod` and `@azure/cosmos` are **peer dependencies** — you need to install them alongside Cosmio.
+
+## Requirements
+
+- **Node.js** >= 22.22.0
+- **TypeScript** >= 5.5 (recommended)
+- **@azure/cosmos** >= 4.0
+- **zod** >= 3.22
+
+## TypeScript Configuration
+
+Cosmio requires strict TypeScript for full type inference. Ensure your `tsconfig.json` includes:
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "moduleResolution": "bundler"
+  }
+}
+```
+
+## ESM & CommonJS
+
+Cosmio ships as a **dual package** — both ESM and CJS are supported:
+
+```ts
+// ESM (recommended)
+import { defineModel, CosmioClient } from "cosmio";
+
+// CommonJS
+const { defineModel, CosmioClient } = require("cosmio");
+```

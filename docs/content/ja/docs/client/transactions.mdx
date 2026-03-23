@@ -1,0 +1,84 @@
+---
+title: トランザクション
+description: 同一パーティションキー内のアトミックなバッチ操作
+---
+
+Cosmos DB はトランザクションバッチをサポートしています。バッチ内のすべての操作は同じパーティションキーを対象とし、**全て成功するか全て失敗するか**のどちらかです。部分的なコミットはありません。
+
+## 基本的な使い方
+
+```ts
+await client.transaction("orders", ["tenant-1"], (tx) => {
+  tx.create({
+    id: "order-1",
+    tenantId: "tenant-1",
+    status: "confirmed",
+    total: 99.99,
+  });
+
+  tx.patch("inventory-1", [
+    { op: "incr", path: "/reserved", value: 1 },
+  ]);
+
+  tx.delete("cart-1");
+});
+```
+
+## 利用可能な操作
+
+`TransactionBuilder` は5つの操作をサポートしています:
+
+```ts
+await client.transaction("container", ["pk-value"], (tx) => {
+  // 新規ドキュメントの作成
+  tx.create({ id: "1", ... });
+
+  // ドキュメントの upsert
+  tx.upsert({ id: "2", ... });
+
+  // 既存ドキュメントの置換
+  tx.replace("3", { id: "3", ... });
+
+  // パッチ（部分更新）
+  tx.patch("4", [
+    { op: "replace", path: "/status", value: "done" },
+  ]);
+
+  // ドキュメントの削除
+  tx.delete("5");
+});
+```
+
+## 同一パーティション要件
+
+トランザクション内のすべての操作は**同じパーティションキー**を対象とする必要があります。これは Cosmio の制約ではなく、Cosmos DB の制約です:
+
+```ts
+// 第2引数がパーティションキーの値
+await client.transaction("users", ["acme"], (tx) => {
+  tx.create({ id: "u1", tenantId: "acme", name: "Alice" });
+  tx.create({ id: "u2", tenantId: "acme", name: "Bob" });
+});
+```
+
+## エラーハンドリング
+
+バッチ内のいずれかの操作が失敗すると、バッチ全体がロールバックされ `CosmioError` がスローされます:
+
+```ts
+import { ConflictError } from "cosmio";
+
+try {
+  await client.transaction("orders", ["t1"], (tx) => {
+    tx.create({ id: "existing-id", tenantId: "t1" });
+  });
+} catch (error) {
+  if (error instanceof ConflictError) {
+    console.log("Duplicate ID in batch");
+  }
+}
+```
+
+## 制限事項
+
+Cosmos DB のトランザクションバッチは **100 操作**、合計リクエストサイズ **2 MB** に制限されています。バッチを計画的に設計してください。

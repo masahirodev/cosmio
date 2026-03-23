@@ -1,0 +1,161 @@
+---
+title: Azure Functions Integration
+description: Automatic per-invocation caching for Azure Functions v3/v4 and other frameworks
+---
+
+Cosmio integrates with Azure Functions to provide **automatic per-invocation caching** via `AsyncLocalStorage`. Instead of manually calling `scope()` in every handler, you register hooks once and all Cosmio operations within an invocation share a request-scoped `ReadCache`.
+
+## Azure Functions v4 (`cosmioHooks`)
+
+For Azure Functions v4, use `cosmioHooks(app)` to register pre-invocation hooks. This is a one-time setup -- every function in your app automatically gets per-invocation caching.
+
+### Setup
+
+```ts
+// src/functions/index.ts
+import { app } from "@azure/functions";
+import { cosmioHooks } from "cosmio/azure-functions";
+
+// Register once — all functions get per-invocation caching
+cosmioHooks(app);
+```
+
+### Usage
+
+No `scope()` call is needed. The cache is automatically scoped to each invocation:
+
+```ts
+// src/functions/getUser.ts
+import { app } from "@azure/functions";
+import { client } from "../cosmio.js";
+import { UserModel } from "../models/user.js";
+
+const users = client.model(UserModel);
+
+app.http("getUser", {
+  handler: async (req, context) => {
+    // No scope() needed — cache is automatic per invocation
+    const user = await users.findById("u1", ["t1"]); // DB hit
+    const same = await users.findById("u1", ["t1"]); // cached (0 RU)
+    return { jsonBody: user };
+  },
+});
+```
+
+Both point reads (`findById`) and queries are cached within the same invocation. When the invocation ends, the cache is garbage collected.
+
+## Azure Functions v3 (`cosmioV3`)
+
+Azure Functions v3 does not have a hook system, so each handler must be wrapped individually with `cosmioV3()`.
+
+```ts
+// Azure Functions v3
+import { cosmioV3 } from "cosmio/azure-functions";
+import { client } from "../cosmio.js";
+import { UserModel } from "../models/user.js";
+
+const users = client.model(UserModel);
+
+module.exports = cosmioV3(async function (context, req) {
+  // Cache is automatic within this invocation
+  const user = await users.findById("u1", ["t1"]);
+  const same = await users.findById("u1", ["t1"]); // cached
+  context.res = { body: user };
+});
+```
+
+`cosmioV3` automatically extracts the `invocationId` from the v3 context object and creates a scoped cache for the duration of the handler.
+
+## Other Frameworks (`withCosmioContext`)
+
+For Express, Hono, standalone scripts, or any non-Azure environment, use `withCosmioContext()` to create a scoped cache context manually.
+
+### Express
+
+```ts
+import express from "express";
+import { withCosmioContext } from "cosmio/azure-functions";
+
+const app = express();
+
+// Middleware: wrap each request in a Cosmio context
+app.use((req, res, next) => {
+  withCosmioContext(() => next());
+});
+
+app.get("/users/:id", async (req, res) => {
+  // All Cosmio reads within this request are cached
+  const user = await users.findById(req.params.id, ["tenant1"]);
+  res.json(user);
+});
+```
+
+### Hono
+
+```ts
+import { Hono } from "hono";
+import { withCosmioContext } from "cosmio/azure-functions";
+
+const app = new Hono();
+
+app.use("*", async (c, next) => {
+  await withCosmioContext(() => next());
+});
+```
+
+### Standalone Scripts
+
+```ts
+import { withCosmioContext } from "cosmio/azure-functions";
+
+await withCosmioContext(async () => {
+  const user = await users.findById("u1", ["t1"]); // cached within this scope
+  const same = await users.findById("u1", ["t1"]); // 0 RU
+});
+```
+
+You can optionally pass an `invocationId` as the second argument:
+
+```ts
+withCosmioContext(() => doWork(), "my-custom-id");
+```
+
+If omitted, a random UUID is generated automatically.
+
+## How It Works
+
+### AsyncLocalStorage Context
+
+Cosmio uses Node.js `AsyncLocalStorage` to maintain an invocation context that is invisible to your application code. Each context holds:
+
+- **`invocationId`** -- a unique identifier for the current invocation
+- **`cache`** -- a `ReadCache` instance scoped to this invocation
+
+```
+Request A ──► AsyncLocalStorage.run(ctxA, handler)
+                └─ findById("u1") → cache miss → DB read → store in ctxA.cache
+                └─ findById("u1") → cache hit  → 0 RU
+
+Request B ──► AsyncLocalStorage.run(ctxB, handler)
+                └─ findById("u1") → cache miss → DB read → store in ctxB.cache
+```
+
+### Automatic Cache Scoping
+
+When `cosmioHooks`, `cosmioV3`, or `withCosmioContext` is active, `CosmioContainer` automatically detects the invocation cache via `getInvocationCache()`. This means:
+
+- **Point reads** (`findById`) are cached by `id + partitionKey`
+- **Queries** are cached by the serialized query string
+- **Writes** (`upsert`, `replace`) invalidate the corresponding cache entry
+- **No stale data across invocations** -- each invocation gets a fresh cache
+
+### Comparison with `scope()`
+
+| | `scope()` | `cosmioHooks` / `withCosmioContext` |
+|---|---|---|
+| Setup | Per-handler | One-time registration |
+| Cache lifetime | Manual (scoped variable) | Automatic (invocation lifetime) |
+| `scope()` call needed | Yes | No |
+| Works outside Azure | Yes | Yes (`withCosmioContext`) |
+
+If you prefer explicit control, `scope()` still works. The integration hooks are a convenience layer that removes boilerplate.

@@ -1,0 +1,97 @@
+---
+title: モデル単位マイグレーション
+description: モデルレベルのmigrate関数とvalidateOnRead
+---
+
+シンプルなケースでは、モデルに直接 `migrate` 関数を定義します。この関数は読み取りごとに、Zodバリデーションの前に実行されます。
+
+## 基本的な使い方
+
+```ts
+const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    fullName: z.string(),
+    role: z.string(),
+  }),
+  migrate: (raw) => {
+    // v1 → v2: firstName + lastName を fullName に統合
+    if (raw.firstName && !raw.fullName) {
+      raw.fullName = `${raw.firstName} ${raw.lastName}`;
+      delete raw.firstName;
+      delete raw.lastName;
+    }
+    // v2 → v3: デフォルトのroleを追加
+    if (!raw.role) {
+      raw.role = "member";
+    }
+    return raw;
+  },
+});
+```
+
+## validateOnRead
+
+デフォルトでは、読み取り時のZodバリデーションはパフォーマンスのため**無効**です。不正なドキュメントを検出するには有効にします：
+
+```ts
+const StrictModel = defineModel({
+  name: "StrictModel",
+  container: "strict",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    status: z.enum(["draft", "published", "archived"]),
+  }),
+  migrate: (raw) => {
+    if (!["draft", "published", "archived"].includes(raw.status as string)) {
+      raw.status = "draft";
+    }
+    return raw;
+  },
+  validateOnRead: true, // マイグレーションが無効なデータを生成した場合 ValidationError をスロー
+});
+```
+
+## 読み取りパイプラインの順序
+
+グローバルとモデル単位の両方のマイグレーションが設定されている場合、パイプラインは以下の順序で実行されます：
+
+1. **グローバルマイグレーション**（`MigrationRegistry`）-- バージョン追跡、スコープ付き
+2. **モデル単位migrate** -- シンプルな変換関数
+3. **validateOnRead** -- Zodスキーマバリデーション（有効な場合）
+4. **afterReadフック** -- 後処理（復号化、変換）
+
+## 使い分け
+
+| アプローチ | 適したケース |
+|-----------|-------------|
+| **モデル単位 `migrate`** | 単一モデルのシンプルで自己完結した変換 |
+| **グローバル `MigrationRegistry`** | 複数モデルにまたがるバージョン管理されたマイグレーション、チームワークフロー |
+| **両方を併用** | グローバルがバージョン管理を担当、モデル単位がモデル固有の処理を担当 |
+
+## 段階的マイグレーションの例
+
+モデル単位の `migrate` は段階的な読み取り時マイグレーションに最適です。古いドキュメントはバッチ更新なしに読み取り時に変換されます：
+
+```ts
+const OrderModel = defineModel({
+  // ...
+  migrate: (raw) => {
+    // 古い注文はpriceを文字列で保存していた
+    if (typeof raw.totalPrice === "string") {
+      raw.totalPrice = parseFloat(raw.totalPrice);
+    }
+    // 古い注文は "cancelled" を使用、新スキーマは "canceled"
+    if (raw.status === "cancelled") {
+      raw.status = "canceled";
+    }
+    return raw;
+  },
+});
+```

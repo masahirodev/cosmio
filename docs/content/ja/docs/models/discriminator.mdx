@@ -1,0 +1,78 @@
+---
+title: マルチモデルコンテナ
+description: ディスクリミネーターによるシングルテーブルデザインとマルチモデルコンテナ
+---
+
+Cosmos DB では、複数のドキュメントタイプを1つのコンテナに格納するシングルテーブルデザインが推奨されています。`discriminator` オプションを使うと、共有コンテナ内でモデルを区別するための型フィールドを追加できます。
+
+## ディスクリミネーター付きモデルの定義
+
+```ts
+const ArticleModel = defineModel({
+  name: "Article",
+  container: "content",
+  partitionKey: ["/siteId"],
+  schema: z.object({
+    id: z.string(),
+    siteId: z.string(),
+    type: z.literal("article"),
+    title: z.string(),
+    body: z.string(),
+  }),
+  discriminator: { field: "type", value: "article" },
+});
+
+const CommentModel = defineModel({
+  name: "Comment",
+  container: "content",
+  partitionKey: ["/siteId"],
+  schema: z.object({
+    id: z.string(),
+    siteId: z.string(),
+    type: z.literal("comment"),
+    articleId: z.string(),
+    text: z.string(),
+  }),
+  discriminator: { field: "type", value: "comment" },
+});
+```
+
+## クエリの自動フィルタリング
+
+ディスクリミネーター付きモデルで `find()` を使うと、Cosmio は自動的に `WHERE c.type = @p0` 句を追加し、該当モデルのドキュメントのみを返します:
+
+```ts
+const articles = client.model(ArticleModel);
+
+// type === "article" のドキュメントのみ返される
+const results = await articles
+  .find(["site-1"])
+  .where({ title: { contains: "Cosmos" } })
+  .exec();
+```
+
+## 書き込み時のバリデーション
+
+Cosmio は `create()` と `upsert()` でディスクリミネーターフィールドを検証します。値が一致しない場合、`ValidationError` がスローされます:
+
+```ts
+// ValidationError: Discriminator field "type" must be "article"
+await articles.create({
+  id: "1",
+  siteId: "site-1",
+  type: "comment", // 不正な type
+  title: "Hello",
+  body: "...",
+});
+```
+
+## コンテナのセットアップ
+
+両方のモデルは同じコンテナを共有します。`ensureContainers()` で重複を排除できます:
+
+```ts
+import { ensureContainers } from "cosmio";
+
+// "content" コンテナを1回だけ作成（最初のモデルの設定を使用）
+await ensureContainers(client.database, [ArticleModel, CommentModel]);
+```

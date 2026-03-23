@@ -1,0 +1,232 @@
+---
+title: Configuration
+description: Configure cosmio pull with cosmio.config.ts
+---
+
+The `cosmio pull` command can be configured with a `cosmio.config.ts` file in your project root. Use `defineConfig()` for full type safety and IDE autocomplete.
+
+## Setup
+
+```ts
+// cosmio.config.ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    endpoint: process.env.COSMOS_ENDPOINT,
+    key: process.env.COSMOS_KEY,
+    database: "mydb",
+  },
+  pull: [
+    { container: "users", output: "src/models/user.model.ts" },
+    { container: "orders", output: "src/models/order.model.ts" },
+  ],
+});
+```
+
+## `defineConfig()`
+
+A type-safe identity function that provides autocomplete for the configuration object.
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: { /* ... */ },
+  pull: [ /* ... */ ],
+});
+```
+
+## Supported File Formats
+
+The config file is loaded from the current working directory. The following filenames are searched in order:
+
+1. `cosmio.config.ts`
+2. `cosmio.config.js`
+3. `cosmio.config.mjs`
+
+The file must have a default export (or a top-level export) that contains a `connection` property.
+
+## `CosmioConfig`
+
+The top-level configuration object.
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `connection` | `CosmioConnectionConfig` | Yes | Cosmos DB connection settings |
+| `pull` | `PullTarget[]` | No | Pull targets for model generation |
+
+## `CosmioConnectionConfig`
+
+Connection settings for Cosmos DB.
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `endpoint` | `string` | No* | Cosmos DB endpoint URL |
+| `key` | `string` | No* | Cosmos DB account key |
+| `connectionString` | `string` | No* | Connection string (alternative to endpoint+key) |
+| `database` | `string` | Yes | Database name |
+| `disableTls` | `boolean` | No | Disable TLS verification (for emulator) |
+
+\* You must provide either `connectionString` or both `endpoint` and `key`.
+
+### Connection Priority
+
+When CLI arguments, config, and environment variables are all available, they are resolved in this order:
+
+1. **CLI arguments** (`--endpoint`, `--key`, `--connection-string`, `--database`)
+2. **Config file** (`cosmio.config.ts`)
+3. **Environment variables** (`COSMOS_ENDPOINT`, `COSMOS_KEY`, `COSMOS_CONNECTION_STRING`, `COSMOS_DATABASE`)
+
+## `PullTarget`
+
+Configuration for a single pull target. Each target generates one model definition.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `container` | `string` | - | Cosmos DB container name (required) |
+| `name` | `string` | PascalCase of container | Model name |
+| `output` | `string` | stdout | Output file path |
+| `sampleSize` | `number` | `100` | Number of documents to sample |
+| `where` | `string` | - | SQL WHERE filter for multi-model containers |
+| `enumThreshold` | `number` | `10` | Max distinct values to treat as enum |
+
+## Examples
+
+### Basic Configuration
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    endpoint: process.env.COSMOS_ENDPOINT,
+    key: process.env.COSMOS_KEY,
+    database: "mydb",
+  },
+  pull: [
+    { container: "users", output: "src/models/user.model.ts" },
+  ],
+});
+```
+
+### Connection String
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    connectionString: process.env.COSMOS_CONNECTION_STRING,
+    database: "mydb",
+  },
+  pull: [
+    { container: "users", output: "src/models/user.model.ts" },
+  ],
+});
+```
+
+### Multi-Model Container
+
+When a single container stores multiple document types, define separate targets with `where` filters:
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    endpoint: process.env.COSMOS_ENDPOINT,
+    key: process.env.COSMOS_KEY,
+    database: "cms",
+  },
+  pull: [
+    {
+      container: "documents",
+      where: "c.type = 'article'",
+      name: "Article",
+      output: "src/models/article.model.ts",
+    },
+    {
+      container: "documents",
+      where: "c.type = 'comment'",
+      name: "Comment",
+      output: "src/models/comment.model.ts",
+    },
+    {
+      container: "documents",
+      where: "c.type = 'tag'",
+      name: "Tag",
+      output: "src/models/tag.model.ts",
+      sampleSize: 50,
+    },
+  ],
+});
+```
+
+Each target generates a separate model file with the appropriate discriminator detected automatically.
+
+### Emulator Configuration
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    endpoint: "https://localhost:8081",
+    key: "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==",
+    database: "mydb",
+    disableTls: true,
+  },
+  pull: [
+    { container: "users", output: "src/models/user.model.ts" },
+  ],
+});
+```
+
+### With Environment Variables
+
+The config file can reference environment variables directly. Combine with [dotenvx](https://dotenvx.com/) to load `.env` files:
+
+```ts
+// cosmio.config.ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    endpoint: process.env.COSMOS_ENDPOINT,
+    key: process.env.COSMOS_KEY,
+    database: process.env.COSMOS_DATABASE ?? "mydb",
+  },
+  pull: [
+    { container: "users", output: "src/models/user.model.ts" },
+  ],
+});
+```
+
+```bash
+# Load .env and run pull
+dotenvx run -- cosmio pull
+```
+
+### Custom Sample Size and Enum Threshold
+
+```ts
+import { defineConfig } from "cosmio";
+
+export default defineConfig({
+  connection: {
+    database: "analytics",
+  },
+  pull: [
+    {
+      container: "events",
+      output: "src/models/event.model.ts",
+      sampleSize: 500,
+      enumThreshold: 20,
+    },
+  ],
+});
+```
+
+- `sampleSize: 500` -- sample more documents for better type inference
+- `enumThreshold: 20` -- allow up to 20 distinct values before treating a field as a plain `string`/`number` instead of an enum

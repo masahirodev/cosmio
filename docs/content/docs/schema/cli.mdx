@@ -1,0 +1,96 @@
+---
+title: CLI
+description: Generate documentation from model definitions using the cosmio CLI
+---
+
+The `cosmio` CLI generates documentation from model definition files.
+
+## Installation
+
+The CLI is included with the `cosmio` package:
+
+```bash
+npm install cosmio
+```
+
+## Usage
+
+```bash
+cosmio docs --format=<format> [--output=<file>] <files...>
+```
+
+## Formats
+
+| Format | Description | Output |
+|--------|-------------|--------|
+| `markdown` | Human-readable model docs | Markdown text |
+| `json-schema` | JSON Schema (2019-09) per model | JSON object |
+| `openapi` | OpenAPI 3.1 with CRUD paths | JSON object |
+| `mermaid` | Mermaid ER diagram | Mermaid text |
+
+## Examples
+
+### Markdown Documentation
+
+```bash
+cosmio docs --format=markdown src/models/*.ts
+```
+
+### JSON Schema
+
+```bash
+cosmio docs --format=json-schema --output=schemas.json src/models/*.ts
+```
+
+### OpenAPI Specification
+
+```bash
+cosmio docs --format=openapi --output=openapi.json src/models/*.ts
+```
+
+### Mermaid Diagram
+
+```bash
+cosmio docs --format=mermaid --output=models.mmd src/models/*.ts
+```
+
+## How It Works
+
+1. The CLI imports the specified files
+2. Scans all exports for `ModelDefinition` objects (created by `defineModel()`)
+3. Generates the requested format
+4. Outputs to stdout or writes to the specified file
+
+## Model File Requirements
+
+Each file must export `ModelDefinition` objects:
+
+```ts
+// src/models/user.ts
+import { defineModel } from "cosmio";
+import { z } from "zod";
+
+export const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+  }),
+});
+```
+
+## npm Script
+
+Add to your `package.json`:
+
+```json
+{
+  "scripts": {
+    "docs:models": "cosmio docs --format=markdown --output=docs/models.md src/models/*.ts",
+    "docs:openapi": "cosmio docs --format=openapi --output=openapi.json src/models/*.ts"
+  }
+}
+```

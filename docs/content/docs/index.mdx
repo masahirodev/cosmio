@@ -1,0 +1,81 @@
+---
+title: Cosmio
+description: Type-safe model definition & operation library for Azure Cosmos DB
+---
+
+Type-safe model definition and operation library for **Azure Cosmos DB**, powered by **Zod**.
+
+## Features
+
+- **Type-safe models** — Define Cosmos DB models with Zod schemas, get full TypeScript inference
+- **Hierarchical partition keys** — Type-safe PK tuples with auto-inference
+- **Prisma-like queries** — Object-based `where` filters with autocomplete
+- **DTO projections** — Named omit/pick DTOs with type-safe query integration and global policy
+- **Select projections** — Pick specific fields to reduce RU consumption
+- **Defaults** — Auto-fill fields on create/upsert with static values or factory functions
+- **Soft delete** — Logical deletion with auto-exclusion and restore
+- **Bulk operations** — Batch create/upsert/delete with validation and soft delete support
+- **RU metrics** — WithMetrics variants for all operations to monitor Request Unit consumption
+- **Migrations** — Global registry or per-model read-time transformations
+- **Hooks** — Lifecycle middleware for audit, encryption, caching
+- **Transactions** — Atomic batch operations within a partition
+- **Repository pattern** — Custom business logic methods on top of CRUD
+- **Request-scoped cache** — Reduce RU for repeated point reads
+- **Azure Functions integration** — Automatic per-invocation caching via AsyncLocalStorage (v3 + v4)
+- **Pull from DB** — Introspect containers and auto-generate model definitions (`cosmio pull`)
+- **Config file** — `cosmio.config.ts` for project-wide connection and pull settings
+- **Schema generation** — JSON Schema, OpenAPI 3.1, Markdown, Mermaid diagrams
+- **Advisor** — Rule-based analysis + AI-powered optimization with Azure Advisor categories
+- **Design patterns** — Recommends official Cosmos DB design patterns based on access patterns
+- **CLI** — Generate documentation and pull models from the command line
+
+## Quick Example
+
+```ts
+import { defineModel, CosmioClient } from "cosmio";
+import { z } from "zod";
+
+const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    email: z.string().email(),
+    role: z.string(),
+    createdAt: z.number(),
+  }),
+  defaults: {
+    role: "member",
+    createdAt: () => Math.floor(Date.now() / 1000),
+  },
+});
+
+const client = new CosmioClient({
+  cosmos: { endpoint: "https://...", key: "..." },
+  database: "mydb",
+});
+
+const users = client.model(UserModel);
+
+// Create — role and createdAt auto-filled
+await users.create({
+  id: "u1",
+  tenantId: "acme",
+  name: "Alice",
+  email: "alice@acme.com",
+});
+
+// Query — Prisma-style where
+const results = await users
+  .find(["acme"])
+  .where({
+    name: { contains: "Ali" },
+    role: "member",
+  })
+  .orderBy("createdAt", "DESC")
+  .limit(10)
+  .exec();
+```

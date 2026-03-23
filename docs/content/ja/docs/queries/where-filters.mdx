@@ -1,0 +1,95 @@
+---
+title: Where フィルタ
+description: 3つのフィルタスタイル — Prisma風オブジェクト、クラシック、生SQL（whereRaw）
+---
+
+クエリビルダーの `where()` メソッドは3つのスタイルをサポートしています。組み合わせてチェーンすることも可能です。
+
+## 1. Prisma風オブジェクト（推奨）
+
+フィールド名とフィルタ演算子を含むオブジェクトを渡します：
+
+```ts
+const results = await users
+  .find(["acme"])
+  .where({
+    name: { contains: "Alice" },
+    age: { gte: 18, lt: 65 },
+    status: "active",           // { equals: "active" } の省略形
+    role: { not: "guest" },
+  })
+  .exec();
+```
+
+### 文字列演算子
+
+| 演算子 | SQL相当 | 例 |
+|--------|---------|-----|
+| `equals` | `=` | `{ name: { equals: "Alice" } }` |
+| `not` | `!=` | `{ name: { not: "Bob" } }` |
+| `contains` | `CONTAINS()` | `{ name: { contains: "li" } }` |
+| `startsWith` | `STARTSWITH()` | `{ name: { startsWith: "A" } }` |
+| `endsWith` | `ENDSWITH()` | `{ email: { endsWith: "@acme.com" } }` |
+| `in` | `ARRAY_CONTAINS()` | `{ role: { in: ["admin", "editor"] } }` |
+
+### 数値演算子
+
+| 演算子 | SQL相当 | 例 |
+|--------|---------|-----|
+| `equals` | `=` | `{ age: { equals: 25 } }` |
+| `not` | `!=` | `{ priority: { not: 0 } }` |
+| `gt` | `>` | `{ age: { gt: 18 } }` |
+| `gte` | `>=` | `{ age: { gte: 18 } }` |
+| `lt` | `<` | `{ age: { lt: 65 } }` |
+| `lte` | `<=` | `{ priority: { lte: 5 } }` |
+| `in` | `ARRAY_CONTAINS()` | `{ priority: { in: [1, 2, 3] } }` |
+
+### ブール演算子
+
+| 演算子 | SQL相当 | 例 |
+|--------|---------|-----|
+| `equals` | `=` | `{ isAdmin: { equals: true } }` |
+| `not` | `!=` | `{ isAdmin: { not: false } }` |
+
+## 2. クラシックスタイル
+
+フィールド名、演算子、値を個別の引数として渡します：
+
+```ts
+const results = await users
+  .find(["acme"])
+  .where("name", "CONTAINS", "Alice")
+  .where("age", ">=", 18)
+  .where("status", "=", "active")
+  .exec();
+```
+
+使用可能な演算子: `=`, `!=`, `<`, `>`, `<=`, `>=`, `CONTAINS`, `STARTSWITH`, `ENDSWITH`, `ARRAY_CONTAINS`
+
+## 3. 生SQL（whereRaw）
+
+型付きAPIでカバーされない式に使用します：
+
+```ts
+const results = await users
+  .find(["acme"])
+  .whereRaw("ST_DISTANCE(c.location, @center) < @radius", {
+    "@center": { type: "Point", coordinates: [139.7, 35.6] },
+    "@radius": 1000,
+  })
+  .whereRaw("IS_DEFINED(c.metadata)")
+  .exec();
+```
+
+## スタイルの混合
+
+3つのスタイルすべてを1つのクエリで組み合わせることができます。条件は `AND` で結合されます：
+
+```ts
+const results = await users
+  .find(["acme"])
+  .where({ role: "member" })
+  .where("age", ">=", 18)
+  .whereRaw("ARRAY_LENGTH(c.tags) > @min", { "@min": 0 })
+  .exec();
+```

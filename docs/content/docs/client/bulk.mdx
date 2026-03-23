@@ -1,0 +1,99 @@
+---
+title: Bulk Operations
+description: Execute multiple create, upsert, and delete operations in a single request
+---
+
+The `bulk()` method executes multiple operations in a single Cosmos DB request, reducing round trips and improving throughput for batch workloads.
+
+```ts
+const users = client.model(UserModel);
+```
+
+## BulkOperation Type
+
+Each element in the operations array must be one of three types:
+
+```ts
+type BulkOperation =
+  | { type: "create"; body: CreateInput }
+  | { type: "upsert"; body: CreateInput }
+  | { type: "delete"; id: string; partitionKeyValues: readonly unknown[] };
+```
+
+## Basic Usage
+
+```ts
+await users.bulk([
+  { type: "create", body: { id: "u1", tenantId: "acme", name: "Alice", email: "alice@acme.com" } },
+  { type: "upsert", body: { id: "u2", tenantId: "acme", name: "Bob", email: "bob@acme.com" } },
+  { type: "delete", id: "u3", partitionKeyValues: ["acme"] },
+]);
+```
+
+## Zod Validation
+
+For `create` and `upsert` operations, Zod schema validation runs before the request is sent -- just like individual `create()` / `upsert()` calls. Default values are also applied automatically.
+
+```ts
+// This will throw a ValidationError if email is invalid
+await users.bulk([
+  { type: "create", body: { id: "u1", tenantId: "acme", name: "Alice", email: "not-an-email" } },
+]);
+```
+
+## Soft Delete Behavior
+
+When a model has [soft delete](/docs/client/soft-delete) configured, `delete` operations in bulk are **automatically converted to Patch operations** that set the deletion timestamp instead of physically removing the document:
+
+```ts
+// If UserModel has softDelete configured:
+await users.bulk([
+  { type: "delete", id: "u1", partitionKeyValues: ["acme"] },
+  // ↑ Internally becomes a Patch that sets the deletedAt timestamp
+]);
+```
+
+This matches the behavior of the individual `delete()` method. Use `hardDelete()` individually if you need physical deletion.
+
+## Error Handling (Partial Failures)
+
+Cosmos DB bulk operations can partially succeed -- some operations may fail while others succeed. Cosmio checks the response for any operation with a status code >= 400 and throws an error with details:
+
+```ts
+try {
+  await users.bulk(operations);
+} catch (error) {
+  // error.message includes failure count and indices:
+  // "Bulk operation had 2 failure(s): [index=1, status=409], [index=3, status=429]"
+}
+```
+
+The error message includes:
+- The total number of failures
+- The index and HTTP status code of each failed operation
+
+> **Important:** Successful operations within the batch are **not rolled back**. If you need atomicity, use [transactions](/docs/client/transactions) instead.
+
+## Hooks Are NOT Fired
+
+> **Warning:** Lifecycle hooks (`beforeCreate`, `afterCreate`, `beforeUpsert`, `afterUpsert`, `beforeDelete`, `afterDelete`) are **NOT** fired for bulk operations.
+
+If you rely on hooks for validation, audit logging, or cache invalidation, use individual `create()` / `upsert()` / `delete()` calls instead:
+
+```ts
+// Hooks fire for each call
+for (const doc of docs) {
+  await users.create(doc);
+}
+
+// Hooks do NOT fire
+await users.bulk(docs.map((d) => ({ type: "create" as const, body: d })));
+```
+
+## When to Use
+
+- **Seeding data** -- insert many documents at once
+- **Batch processing** -- process queues or CSV imports efficiently
+- **Cleanup jobs** -- delete or update many documents in one call
+
+For operations where hooks, per-document error handling, or atomicity are needed, prefer individual calls or [transactions](/docs/client/transactions).

@@ -1,0 +1,92 @@
+---
+title: API リファレンス
+description: CosmioContainerメソッドと全エクスポートの完全なリファレンス
+---
+
+## CosmioContainer メソッド
+
+| メソッド | シグネチャ | 説明 |
+|---------|-----------|------|
+| `create` | `(doc) => Promise<Document>` | Zodバリデーションとデフォルト値付きで作成 |
+| `upsert` | `(doc) => Promise<Document>` | Zodバリデーションとデフォルト値付きでアップサート |
+| `findById` | `(id, pk) => Promise<Document \| undefined>` | ID + パーティションキーでポイントリード |
+| `replace` | `(id, doc, opts?) => Promise<Document>` | ドキュメント全体の置換（オプションでETag） |
+| `delete` | `(id, pk) => Promise<void>` | 削除（設定済みの場合はソフトデリート） |
+| `hardDelete` | `(id, pk) => Promise<void>` | 物理削除（ソフトデリートをバイパス） |
+| `restore` | `(id, pk) => Promise<Document \| undefined>` | ソフトデリートされたドキュメントを復元 |
+| `patch` | `(id, pk, ops) => Promise<Document>` | パッチ操作による部分更新 |
+| `query` | `(spec, pk?) => Promise<Document[]>` | 生SQLクエリ |
+| `find` | `(pk?) => QueryBuilder` | フルエントクエリビルダーを開始 |
+| `findWithDeleted` | `(pk?) => QueryBuilder` | ソフトデリート済みを含むクエリ |
+| `bulk` | `(ops) => Promise<void>` | バルク作成/アップサート/削除を実行 |
+| `use` | `(event, fn) => this` | ライフサイクルフックを登録 |
+| `scope` | `() => CosmioContainer` | リクエストスコープのキャッシュ済みインスタンスを作成 |
+| `raw` | `Container` | 基盤のCosmos DB Containerにアクセス |
+| `model` | `ModelDefinition` | バインドされたモデル定義 |
+
+## 全エクスポート
+
+### コア
+
+| エクスポート | 種類 | モジュール |
+|------------|------|----------|
+| `defineModel` | function | `cosmio` |
+| `CosmioClient` | class | `cosmio` |
+| `CosmioContainer` | class | `cosmio` |
+| `QueryBuilder` | class | `cosmio` |
+| `TransactionBuilder` | class | `cosmio` |
+| `defineRepository` | function | `cosmio` |
+| `ReadCache` | class | `cosmio` |
+| `HookRegistry` | class | `cosmio` |
+
+### ユーティリティ
+
+| エクスポート | 種類 | 説明 |
+|------------|------|------|
+| `ensureContainer` | function | コンテナが存在しなければ作成 |
+| `ensureContainers` | function | 複数コンテナを作成 |
+| `buildPartitionKey` | function | 値の配列からPKを構築 |
+| `extractPartitionKey` | function | ドキュメントからPK値を抽出 |
+
+### エラー
+
+| エクスポート | 種類 |
+|------------|------|
+| `CosmioError` | class |
+| `NotFoundError` | class |
+| `ConflictError` | class |
+| `PreconditionFailedError` | class |
+| `TooManyRequestsError` | class |
+| `ValidationError` | class |
+| `mapCosmosError` | function |
+
+### スキーマ生成
+
+| エクスポート | 種類 |
+|------------|------|
+| `toJsonSchema` | function |
+| `toJsonSchemas` | function |
+| `toOpenAPI` | function |
+| `toMarkdown` | function |
+| `toMarkdownDoc` | function |
+| `toMermaidER` | function |
+
+### アドバイザー
+
+| エクスポート | 種類 |
+|------------|------|
+| `analyzeModels` | function |
+| `generateAdvisorPrompt` | function |
+| `DESIGN_PATTERNS` | object |
+| `getPatternInfo` | function |
+| `recommendPattern` | function |
+
+### マイグレーション
+
+| エクスポート | 種類 |
+|------------|------|
+| `MigrationRegistry` | class |
+
+### 型エクスポート
+
+`ModelDefinition`, `ModelConfig`, `DefaultsMap`, `DefaultValue`, `Discriminator`, `CreateInputWithDefaults`, `CosmioClientOptions`, `BulkOperation`, `HookEvent`, `HookFn`, `Migration`, `CosmioJsonSchema`, `MermaidOptions`, `CosmioErrorCode`, `WhereInput`, `StringFilter`, `NumberFilter`, `BooleanFilter`, `CreateInput`, `DocumentRead`, `ModelOutput`, `PartitionKeyValues`, `CosmosSystemFields`, `WithSystemFields`, `AccessPattern`, `AdvisorCategory`, `AdvisorFinding`, `AdvisorReport`, `CosmosDesignPattern`, `CostBreakdown`, `DesignPatternRecommendation`, `ModelWithPatterns`, `RUEstimate`, `Severity`

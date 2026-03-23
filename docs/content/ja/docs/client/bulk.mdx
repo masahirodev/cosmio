@@ -1,0 +1,99 @@
+---
+title: バルク操作
+description: 1回のリクエストで複数の create, upsert, delete 操作を実行
+---
+
+`bulk()` メソッドは、1回の Cosmos DB リクエストで複数の操作を実行し、ラウンドトリップを削減してバッチワークロードのスループットを向上させます。
+
+```ts
+const users = client.model(UserModel);
+```
+
+## BulkOperation 型
+
+操作配列の各要素は、以下の3つの型のいずれかです:
+
+```ts
+type BulkOperation =
+  | { type: "create"; body: CreateInput }
+  | { type: "upsert"; body: CreateInput }
+  | { type: "delete"; id: string; partitionKeyValues: readonly unknown[] };
+```
+
+## 基本的な使い方
+
+```ts
+await users.bulk([
+  { type: "create", body: { id: "u1", tenantId: "acme", name: "Alice", email: "alice@acme.com" } },
+  { type: "upsert", body: { id: "u2", tenantId: "acme", name: "Bob", email: "bob@acme.com" } },
+  { type: "delete", id: "u3", partitionKeyValues: ["acme"] },
+]);
+```
+
+## Zod バリデーション
+
+`create` と `upsert` 操作では、リクエスト送信前に Zod スキーマバリデーションが実行されます。個別の `create()` / `upsert()` と同様です。デフォルト値も自動的に適用されます。
+
+```ts
+// email が無効な場合、ValidationError がスローされます
+await users.bulk([
+  { type: "create", body: { id: "u1", tenantId: "acme", name: "Alice", email: "not-an-email" } },
+]);
+```
+
+## 論理削除の挙動
+
+[論理削除](/ja/docs/client/soft-delete)が設定されたモデルでは、bulk 内の `delete` 操作は**自動的に Patch 操作に変換**され、ドキュメントを物理削除する代わりに削除タイムスタンプを設定します:
+
+```ts
+// UserModel に softDelete が設定されている場合:
+await users.bulk([
+  { type: "delete", id: "u1", partitionKeyValues: ["acme"] },
+  // ↑ 内部的には deletedAt タイムスタンプを設定する Patch になる
+]);
+```
+
+これは個別の `delete()` メソッドと同じ挙動です。物理削除が必要な場合は、個別に `hardDelete()` を使用してください。
+
+## エラーハンドリング（部分失敗）
+
+Cosmos DB のバルク操作は部分的に成功する場合があります。一部の操作が失敗し、他の操作は成功するケースです。Cosmio はレスポンスのステータスコード >= 400 の操作を検出し、詳細情報付きのエラーをスローします:
+
+```ts
+try {
+  await users.bulk(operations);
+} catch (error) {
+  // error.message に失敗数とインデックスが含まれます:
+  // "Bulk operation had 2 failure(s): [index=1, status=409], [index=3, status=429]"
+}
+```
+
+エラーメッセージには以下が含まれます:
+- 失敗の総数
+- 各失敗操作のインデックスと HTTP ステータスコード
+
+> **重要:** バッチ内の成功した操作は**ロールバックされません**。原子性が必要な場合は、代わりに[トランザクション](/ja/docs/client/transactions)を使用してください。
+
+## フックは発火しない
+
+> **注意:** ライフサイクルフック（`beforeCreate`、`afterCreate`、`beforeUpsert`、`afterUpsert`、`beforeDelete`、`afterDelete`）はバルク操作では**発火しません**。
+
+フックによるバリデーション、監査ログ、キャッシュの無効化に依存している場合は、個別の `create()` / `upsert()` / `delete()` を使用してください:
+
+```ts
+// 各呼び出しでフックが発火する
+for (const doc of docs) {
+  await users.create(doc);
+}
+
+// フックは発火しない
+await users.bulk(docs.map((d) => ({ type: "create" as const, body: d })));
+```
+
+## 使いどころ
+
+- **データのシーディング** — 多数のドキュメントを一括挿入
+- **バッチ処理** — キューや CSV インポートを効率的に処理
+- **クリーンアップジョブ** — 多数のドキュメントを1回の呼び出しで削除・更新
+
+フック、ドキュメントごとのエラーハンドリング、原子性が必要な操作には、個別の呼び出しまたは[トランザクション](/ja/docs/client/transactions)を使用してください。

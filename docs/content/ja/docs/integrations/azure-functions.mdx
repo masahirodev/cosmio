@@ -1,0 +1,161 @@
+---
+title: Azure Functions 統合
+description: Azure Functions v3/v4 およびその他のフレームワーク向けの自動 per-invocation キャッシュ
+---
+
+Cosmio は Azure Functions と統合し、`AsyncLocalStorage` を利用した**自動 per-invocation キャッシュ**を提供します。各ハンドラーで手動で `scope()` を呼び出す代わりに、フックを一度登録するだけで、呼び出し内のすべての Cosmio 操作がリクエストスコープの `ReadCache` を共有します。
+
+## Azure Functions v4 (`cosmioHooks`)
+
+Azure Functions v4 では、`cosmioHooks(app)` で pre-invocation フックを登録します。一度だけセットアップすれば、アプリ内のすべての関数が自動的に per-invocation キャッシュを取得します。
+
+### セットアップ
+
+```ts
+// src/functions/index.ts
+import { app } from "@azure/functions";
+import { cosmioHooks } from "cosmio/azure-functions";
+
+// 一度登録するだけ — すべての関数が per-invocation キャッシュを取得
+cosmioHooks(app);
+```
+
+### 使い方
+
+`scope()` の呼び出しは不要です。キャッシュは各呼び出しに自動的にスコープされます:
+
+```ts
+// src/functions/getUser.ts
+import { app } from "@azure/functions";
+import { client } from "../cosmio.js";
+import { UserModel } from "../models/user.js";
+
+const users = client.model(UserModel);
+
+app.http("getUser", {
+  handler: async (req, context) => {
+    // scope() 不要 — 呼び出しごとにキャッシュが自動適用
+    const user = await users.findById("u1", ["t1"]); // DB ヒット
+    const same = await users.findById("u1", ["t1"]); // キャッシュ (0 RU)
+    return { jsonBody: user };
+  },
+});
+```
+
+ポイントリード (`findById`) とクエリの両方が同じ呼び出し内でキャッシュされます。呼び出しが終了すると、キャッシュはガベージコレクションされます。
+
+## Azure Functions v3 (`cosmioV3`)
+
+Azure Functions v3 にはフックシステムがないため、各ハンドラーを `cosmioV3()` で個別にラップする必要があります。
+
+```ts
+// Azure Functions v3
+import { cosmioV3 } from "cosmio/azure-functions";
+import { client } from "../cosmio.js";
+import { UserModel } from "../models/user.js";
+
+const users = client.model(UserModel);
+
+module.exports = cosmioV3(async function (context, req) {
+  // この呼び出し内でキャッシュが自動適用
+  const user = await users.findById("u1", ["t1"]);
+  const same = await users.findById("u1", ["t1"]); // キャッシュから
+  context.res = { body: user };
+});
+```
+
+`cosmioV3` は v3 コンテキストオブジェクトから `invocationId` を自動的に抽出し、ハンドラーの実行期間中のスコープキャッシュを作成します。
+
+## その他のフレームワーク (`withCosmioContext`)
+
+Express、Hono、スタンドアロンスクリプトなど、Azure 以外の環境では `withCosmioContext()` を使用してスコープキャッシュコンテキストを手動で作成します。
+
+### Express
+
+```ts
+import express from "express";
+import { withCosmioContext } from "cosmio/azure-functions";
+
+const app = express();
+
+// ミドルウェア: 各リクエストを Cosmio コンテキストでラップ
+app.use((req, res, next) => {
+  withCosmioContext(() => next());
+});
+
+app.get("/users/:id", async (req, res) => {
+  // このリクエスト内のすべての Cosmio 読み取りがキャッシュされる
+  const user = await users.findById(req.params.id, ["tenant1"]);
+  res.json(user);
+});
+```
+
+### Hono
+
+```ts
+import { Hono } from "hono";
+import { withCosmioContext } from "cosmio/azure-functions";
+
+const app = new Hono();
+
+app.use("*", async (c, next) => {
+  await withCosmioContext(() => next());
+});
+```
+
+### スタンドアロンスクリプト
+
+```ts
+import { withCosmioContext } from "cosmio/azure-functions";
+
+await withCosmioContext(async () => {
+  const user = await users.findById("u1", ["t1"]); // このスコープ内でキャッシュ
+  const same = await users.findById("u1", ["t1"]); // 0 RU
+});
+```
+
+第二引数としてオプションで `invocationId` を渡すこともできます:
+
+```ts
+withCosmioContext(() => doWork(), "my-custom-id");
+```
+
+省略した場合、ランダムな UUID が自動生成されます。
+
+## 仕組み
+
+### AsyncLocalStorage コンテキスト
+
+Cosmio は Node.js の `AsyncLocalStorage` を使用して、アプリケーションコードから透過的な呼び出しコンテキストを維持します。各コンテキストは以下を保持します:
+
+- **`invocationId`** -- 現在の呼び出しの一意識別子
+- **`cache`** -- この呼び出しにスコープされた `ReadCache` インスタンス
+
+```
+Request A ──► AsyncLocalStorage.run(ctxA, handler)
+                └─ findById("u1") → キャッシュミス → DB 読み取り → ctxA.cache に格納
+                └─ findById("u1") → キャッシュヒット → 0 RU
+
+Request B ──► AsyncLocalStorage.run(ctxB, handler)
+                └─ findById("u1") → キャッシュミス → DB 読み取り → ctxB.cache に格納
+```
+
+### 自動キャッシュスコーピング
+
+`cosmioHooks`、`cosmioV3`、または `withCosmioContext` がアクティブな場合、`CosmioContainer` は `getInvocationCache()` を通じて呼び出しキャッシュを自動的に検出します。これにより:
+
+- **ポイントリード** (`findById`) は `id + partitionKey` でキャッシュ
+- **クエリ** はシリアライズされたクエリ文字列でキャッシュ
+- **書き込み** (`upsert`, `replace`) は対応するキャッシュエントリを無効化
+- **呼び出し間のデータ不整合なし** -- 各呼び出しがフレッシュなキャッシュを取得
+
+### `scope()` との比較
+
+| | `scope()` | `cosmioHooks` / `withCosmioContext` |
+|---|---|---|
+| セットアップ | ハンドラーごと | 一度だけ登録 |
+| キャッシュの寿命 | 手動（スコープ変数） | 自動（呼び出しの寿命） |
+| `scope()` の呼び出し | 必要 | 不要 |
+| Azure 外での動作 | 可能 | 可能 (`withCosmioContext`) |
+
+明示的な制御を好む場合、`scope()` は引き続き使用できます。統合フックはボイラープレートを削減する便利なレイヤーです。

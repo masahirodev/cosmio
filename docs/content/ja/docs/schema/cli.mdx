@@ -1,0 +1,96 @@
+---
+title: CLI
+description: cosmio CLIを使用してモデル定義からドキュメントを生成
+---
+
+`cosmio` CLIはモデル定義ファイルからドキュメントを生成します。
+
+## インストール
+
+CLIは `cosmio` パッケージに含まれています：
+
+```bash
+npm install cosmio
+```
+
+## 使い方
+
+```bash
+cosmio docs --format=<format> [--output=<file>] <files...>
+```
+
+## フォーマット
+
+| フォーマット | 説明 | 出力 |
+|------------|------|------|
+| `markdown` | 人間が読みやすいモデルドキュメント | Markdownテキスト |
+| `json-schema` | モデルごとのJSON Schema（2019-09） | JSONオブジェクト |
+| `openapi` | CRUDパス付きOpenAPI 3.1 | JSONオブジェクト |
+| `mermaid` | Mermaid ER図 | Mermaidテキスト |
+
+## 例
+
+### Markdownドキュメント
+
+```bash
+cosmio docs --format=markdown src/models/*.ts
+```
+
+### JSON Schema
+
+```bash
+cosmio docs --format=json-schema --output=schemas.json src/models/*.ts
+```
+
+### OpenAPI仕様
+
+```bash
+cosmio docs --format=openapi --output=openapi.json src/models/*.ts
+```
+
+### Mermaid図
+
+```bash
+cosmio docs --format=mermaid --output=models.mmd src/models/*.ts
+```
+
+## 仕組み
+
+1. CLIが指定されたファイルをインポート
+2. 全エクスポートから `ModelDefinition` オブジェクト（`defineModel()` で作成）をスキャン
+3. 要求されたフォーマットを生成
+4. 標準出力に出力、または指定されたファイルに書き出し
+
+## モデルファイルの要件
+
+各ファイルは `ModelDefinition` オブジェクトをエクスポートする必要があります：
+
+```ts
+// src/models/user.ts
+import { defineModel } from "cosmio";
+import { z } from "zod";
+
+export const UserModel = defineModel({
+  name: "User",
+  container: "users",
+  partitionKey: ["/tenantId"],
+  schema: z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+  }),
+});
+```
+
+## npmスクリプト
+
+`package.json` に追加：
+
+```json
+{
+  "scripts": {
+    "docs:models": "cosmio docs --format=markdown --output=docs/models.md src/models/*.ts",
+    "docs:openapi": "cosmio docs --format=openapi --output=openapi.json src/models/*.ts"
+  }
+}
+```

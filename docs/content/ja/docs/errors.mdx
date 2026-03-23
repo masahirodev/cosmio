@@ -1,0 +1,107 @@
+---
+title: エラーハンドリング
+description: 型付きエラークラスとCosmos DBエラーの自動マッピング
+---
+
+CosmioはCosmos DBのエラーを型付きエラークラスにラップし、予測可能なエラーハンドリングを実現します。
+
+## エラークラス
+
+全てのエラーは `CosmioError` を継承します：
+
+```ts
+import {
+  CosmioError,
+  NotFoundError,
+  ConflictError,
+  PreconditionFailedError,
+  TooManyRequestsError,
+  ValidationError,
+} from "cosmio";
+```
+
+| クラス | コード | HTTPステータス | 発生条件 |
+|--------|--------|--------------|---------|
+| `NotFoundError` | `NOT_FOUND` | 404 | ドキュメントが存在しない |
+| `ConflictError` | `CONFLICT` | 409 | 作成時のID重複 |
+| `PreconditionFailedError` | `PRECONDITION_FAILED` | 412 | 置換時のETag不一致 |
+| `TooManyRequestsError` | `TOO_MANY_REQUESTS` | 429 | レート制限 |
+| `ValidationError` | `VALIDATION_ERROR` | -- | Zodスキーマバリデーション失敗 |
+| `CosmioError` | `COSMOS_ERROR` | 様々 | その他のCosmos DBエラー |
+
+## エラーのキャッチ
+
+```ts
+import { ConflictError, NotFoundError, TooManyRequestsError } from "cosmio";
+
+try {
+  await users.create({ id: "u1", tenantId: "acme", name: "Alice", email: "a@a.com" });
+} catch (error) {
+  if (error instanceof ConflictError) {
+    console.log("ユーザーは既に存在します");
+  } else if (error instanceof TooManyRequestsError) {
+    console.log(`レート制限、${error.retryAfterMs}ms後にリトライ`);
+  }
+}
+```
+
+## ValidationError
+
+`create()`、`upsert()`、`replace()` でZodバリデーションが失敗した場合にスローされます：
+
+```ts
+import { ValidationError } from "cosmio";
+
+try {
+  await users.create({ id: "u1", tenantId: "acme", name: "", email: "invalid" });
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.log(error.issues); // Zodのissue配列
+  }
+}
+```
+
+## mapCosmosError()
+
+生のCosmos DBエラーを型付き `CosmioError` インスタンスに変換します。内部で使用されていますが、カスタム操作にも利用可能です：
+
+```ts
+import { mapCosmosError } from "cosmio";
+
+try {
+  await users.raw.items.create({ id: "1", bad: "data" });
+} catch (error) {
+  const mapped = mapCosmosError(error);
+  console.log(mapped.code);       // "CONFLICT" | "NOT_FOUND" | ...
+  console.log(mapped.statusCode); // 409, 404 など
+}
+```
+
+## エラープロパティ
+
+```ts
+class CosmioError extends Error {
+  readonly code: CosmioErrorCode;   // "NOT_FOUND" | "CONFLICT" | ...
+  readonly statusCode?: number;     // HTTPステータスコード
+}
+
+class TooManyRequestsError extends CosmioError {
+  readonly retryAfterMs?: number;   // Cosmos DBからのリトライ遅延
+}
+
+class ValidationError extends CosmioError {
+  readonly issues: unknown[];       // Zodバリデーションのissue
+}
+```
+
+## エラーコード型
+
+```ts
+type CosmioErrorCode =
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "PRECONDITION_FAILED"
+  | "TOO_MANY_REQUESTS"
+  | "VALIDATION_ERROR"
+  | "COSMOS_ERROR";
+```

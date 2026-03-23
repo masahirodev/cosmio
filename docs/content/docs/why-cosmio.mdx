@@ -1,0 +1,306 @@
+---
+title: Why Cosmio
+description: The real problems Cosmio solves for teams building on Azure Cosmos DB
+---
+
+Cosmio was built to solve **four concrete problems** that teams hit when building applications on Azure Cosmos DB. The ORM-like CRUD layer is a bonus — the real value is in making your data layer **visible, safe, evolvable, and fast**.
+
+---
+
+## Problem 1: "What does the data look like?"
+
+### The Pain
+
+In a team setting, Cosmos DB's schemaless nature becomes a liability:
+
+- A new developer joins and has no idea what fields exist in `inspections` container
+- Someone adds a field in code but doesn't tell the team — now half the reads break
+- There's no single source of truth for the data model
+- PR reviews can't catch data shape issues because there's nothing to diff against
+
+### The Solution: Model as Documentation
+
+`defineModel()` creates a **single source of truth** that serves as living documentation.
+
+```ts
+const InspectionModel = defineModel({
+  name: "Inspection",
+  container: "inspections",
+  partitionKey: ["/tenantId", "/siteId"],
+  schema: z.object({
+    id: z.string().describe("Unique inspection ID"),
+    tenantId: z.string().describe("Tenant partition key"),
+    siteId: z.string().describe("Site partition key"),
+    type: z.literal("inspection").describe("Document type discriminator"),
+    name: z.string().describe("Inspection name"),
+    status: z.enum(["draft", "in_progress", "completed"]).describe("Current status"),
+    assigneeId: z.string().optional().describe("Assigned inspector user ID"),
+    score: z.number().min(0).max(100).optional().describe("Inspection score (0-100)"),
+    completedAt: z.number().optional().describe("Completion timestamp (unix seconds)"),
+    createdAt: z.number().describe("Creation timestamp (unix seconds)"),
+  }),
+  discriminator: { field: "type", value: "inspection" },
+  description: "Site inspection records with scoring",
+});
+```
+
+This single definition gives you:
+
+| What you get | How |
+|-------------|-----|
+| **Type safety** | `typeof InspectionModel._types.output` — full TypeScript inference |
+| **Field descriptions** | `InspectionModel.fieldDescriptions` — runtime access to `.describe()` |
+| **Markdown docs** | `toMarkdownDoc([InspectionModel])` — auto-generated field tables |
+| **JSON Schema** | `toJsonSchema(InspectionModel)` — for external tools and validation |
+| **OpenAPI spec** | `toOpenAPI([InspectionModel])` — for API consumers |
+| **ER diagrams** | `toMermaidER([InspectionModel])` — visual container layout |
+| **CLI generation** | `cosmio docs --format=markdown` — regenerate on every CI build |
+
+**Team impact:** New developers read the model file and immediately understand the data. PRs that change models are easy to review because the schema diff is right there.
+
+---
+
+## Problem 2: "I just need 3 fields, but I'm pulling entire documents"
+
+### The Pain
+
+Cosmos DB charges RU based on document size. In real applications:
+
+- A list page only needs `id`, `name`, and `status` — but you're reading 50+ fields per document
+- TypeScript gives you `any` or full document types — no way to express "I only want these fields"
+- Developers pass around full documents through the call stack, coupling everything to the full schema
+- No compile-time safety when accessing fields that weren't actually fetched
+
+### The Solution: Type-Safe Projections + Prisma-Style Queries
+
+```ts
+// Only fetch what you need — type narrows automatically
+const listItems = await inspections
+  .find(["tenant1", "site1"])
+  .where({ status: "in_progress" })
+  .select("id", "name", "status", "assigneeId")
+  .orderBy("createdAt", "DESC")
+  .limit(20)
+  .exec();
+
+// TypeScript knows: { id: string; name: string; status: string; assigneeId?: string }[]
+// NOT the full 50-field document — saves RU and prevents accidental coupling
+
+listItems[0].name;     // ✅ string
+listItems[0].score;    // ❌ TypeScript error — not in the projection
+```
+
+Three query styles for different needs:
+
+```ts
+// Prisma-style — best autocomplete, type-safe operators
+await inspections.find(["t1", "s1"]).where({
+  status: "completed",
+  score: { gte: 80 },
+  name: { contains: "routine" },
+}).exec();
+
+// Quick filter — simple and readable
+await inspections.find(["t1", "s1"]).where("status", "=", "completed").exec();
+
+// Cosmos DB native — for geo queries, UDFs, complex expressions
+await inspections.find(["t1", "s1"])
+  .whereRaw("ST_DISTANCE(c.location, @center) < @radius", {
+    "@center": { type: "Point", coordinates: [139.7, 35.6] },
+    "@radius": 1000,
+  }).exec();
+```
+
+**Team impact:** Developers only fetch what they need. TypeScript catches missing-field bugs at compile time. RU costs drop because projections read less data.
+
+---
+
+## Problem 3: "We need to change the schema, but we can't migrate"
+
+### The Pain
+
+Cosmos DB has no `ALTER TABLE`. When your schema evolves:
+
+- Old documents in the DB have the old shape — forever
+- Your code must handle both old and new shapes simultaneously
+- There's no way to know which "version" a document is at
+- Different team members add different migration logic in different places
+- Some documents get migrated, some don't — inconsistency spreads
+
+### The Solution: Centralized Read-Time Migration
+
+Define migrations **once**, apply them **everywhere** — automatically.
+
+```ts
+// migrations.ts — one file, reviewed by the whole team
+import { MigrationRegistry } from "cosmio";
+
+export const migrations = new MigrationRegistry({ versionField: "_v" });
+
+// v2: Merge firstName + lastName → fullName
+migrations.register({
+  name: "v2-merge-name",
+  version: 2,
+  up: (doc) => {
+    if (doc.firstName && !doc.fullName) {
+      doc.fullName = `${doc.firstName} ${doc.lastName}`;
+      delete doc.firstName;
+      delete doc.lastName;
+    }
+    return doc;
+  },
+});
+
+// v3: Add default role (only for User model)
+migrations.register({
+  name: "v3-default-role",
+  version: 3,
+  scope: { models: ["User"] },
+  up: (doc) => {
+    if (!doc.role) doc.role = "member";
+    return doc;
+  },
+});
+
+// v4: Rename "score" to "rating" (only in inspections container)
+migrations.register({
+  name: "v4-rename-score",
+  version: 4,
+  scope: { containers: ["inspections"] },
+  up: (doc) => {
+    if (doc.score !== undefined && doc.rating === undefined) {
+      doc.rating = doc.score;
+      delete doc.score;
+    }
+    return doc;
+  },
+});
+```
+
+```ts
+// app.ts — one line to activate everywhere
+const client = new CosmioClient({
+  cosmos: { endpoint: "...", key: "..." },
+  database: "mydb",
+  migrations, // ← all reads auto-migrate
+});
+```
+
+**How it works:**
+
+1. Every document gets a `_v` (version) field
+2. On read, only migrations newer than the document's version are applied
+3. The version is updated in memory (not written back by default)
+4. Optional: write back migrated documents for permanent fix (read-repair pattern)
+
+```ts
+// Read-repair: gradually fix old documents
+const user = await users.findById("u1", ["t1"]);
+if (user && (user as Record<string, unknown>)._v < migrations.currentVersion) {
+  await users.upsert(user); // writes back with new schema + updated _v
+}
+```
+
+**Team impact:** One migration file in the repo. Every team member's code reads the same shape. No more "I forgot to handle the old format" bugs.
+
+---
+
+## Problem 4: "Every request hits the database — caching is hard"
+
+### The Pain
+
+In complex applications, the same data gets read multiple times per request:
+
+- Authentication middleware reads the user → controller reads the user again → service reads the user again
+- A list page fetches items, then fetches related data for each item (N+1)
+- Developers add manual caching with `Map` or Redis — inconsistency everywhere
+- Cache invalidation is wrong — stale data causes bugs
+- In Azure Functions, cache should be per-invocation, not global
+
+### The Solution: Automatic Request-Scoped Caching
+
+Zero configuration. Works with Azure Functions v3/v4 and any framework.
+
+```ts
+// Azure Functions v4 — one line in your entry point
+import { app } from "@azure/functions";
+import { cosmioHooks } from "cosmio";
+
+cosmioHooks(app); // ← all functions get per-invocation caching
+```
+
+```ts
+// Inside any function — caching is automatic
+app.http("getInspectionDetails", {
+  handler: async (req, context) => {
+    // These 3 calls hit the DB only ONCE:
+    const inspection = await inspections.findById("insp-1", ["t1", "s1"]);
+    const inspection2 = await inspections.findById("insp-1", ["t1", "s1"]); // cached
+    const inspection3 = await inspections.findById("insp-1", ["t1", "s1"]); // cached
+
+    // Query results are also cached within the same invocation:
+    const related = await checklists.find(["t1", "s1"])
+      .where({ inspectionId: "insp-1" }).exec();           // DB hit
+    const related2 = await checklists.find(["t1", "s1"])
+      .where({ inspectionId: "insp-1" }).exec();           // cached
+
+    // Writes automatically invalidate both point-read AND query caches:
+    await inspections.patch("insp-1", ["t1", "s1"], [
+      { op: "replace", path: "/status", value: "completed" },
+    ]);
+    // Next read will hit DB again (cache was invalidated)
+    const fresh = await inspections.findById("insp-1", ["t1", "s1"]); // DB hit
+
+    return { jsonBody: inspection };
+  },
+});
+```
+
+```ts
+// Azure Functions v3
+import { cosmioV3 } from "cosmio";
+
+module.exports = cosmioV3(async function (context, req) {
+  // Same automatic caching — per invocation
+  const user = await users.findById("u1", ["t1"]);
+  const user2 = await users.findById("u1", ["t1"]); // cached (0 RU)
+});
+```
+
+```ts
+// Express / Hono / any framework
+import { withCosmioContext } from "cosmio";
+
+app.use((req, res, next) => {
+  withCosmioContext(() => next()); // cache scoped to this request
+});
+```
+
+**How it works internally:**
+
+- Uses `AsyncLocalStorage` (Node.js built-in) to create per-invocation scope
+- Point reads cached by `container + id + partitionKey`
+- Query results cached by `container + SQL + parameters + partitionKey`
+- Any write (`create`, `upsert`, `replace`, `delete`, `patch`) invalidates:
+  - The specific point-read cache entry
+  - ALL query caches for that container (because any query could include the changed document)
+- Cache values are deep-cloned (`structuredClone`) to prevent mutation contamination
+- When the invocation ends, the entire cache is garbage collected
+
+**Team impact:** Developers write straightforward code — read what you need, where you need it. No manual cache management. No stale data bugs. RU costs drop automatically.
+
+---
+
+## What Cosmio is NOT
+
+Cosmio is **not trying to be a full ORM**. It doesn't hide Cosmos DB behind an abstraction. Instead:
+
+| Cosmio does | Cosmio doesn't |
+|------------|----------------|
+| Make your data model visible and documented | Abstract away Cosmos DB concepts |
+| Add type safety to schemaless data | Generate containers or manage infrastructure |
+| Provide migration without DB-level support | Support cross-container joins or relations |
+| Cache reads transparently per request | Replace Redis or distributed caching |
+| Expose `raw` for full SDK access | Lock you into a proprietary query language |
+
+The CRUD layer, query builder, hooks, soft delete, and repository pattern are conveniences — but the **core value** is solving the four problems above.

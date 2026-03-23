@@ -1,0 +1,103 @@
+---
+title: Markdown Documentation
+description: Generate Markdown docs from model definitions
+---
+
+Generate human-readable Markdown documentation from Cosmio models.
+
+## Single Model
+
+```ts
+import { toMarkdown } from "cosmio";
+
+const md = toMarkdown(UserModel);
+console.log(md);
+```
+
+Output:
+
+```markdown
+## User
+
+Application users
+
+**Container:** `users`
+**Partition Key:** `/tenantId`
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | |
+| `tenantId` | string | Yes | |
+| `name` | string | Yes | |
+| `email` | string | Yes | |
+| `age` | number | No | |
+```
+
+## Multiple Models
+
+Generate a complete documentation page with a title:
+
+```ts
+import { toMarkdownDoc } from "cosmio";
+
+const doc = toMarkdownDoc([UserModel, OrderModel, TaskModel], {
+  title: "Data Models",
+});
+```
+
+Output:
+
+```markdown
+# Data Models
+
+## User
+...
+
+## Order
+...
+
+## Task
+...
+```
+
+## Field Type Mapping
+
+Zod types are mapped to readable names:
+
+| Zod Type | Markdown Type |
+|----------|---------------|
+| `z.string()` | string |
+| `z.number()` | number |
+| `z.boolean()` | boolean |
+| `z.date()` | Date |
+| `z.array()` | array |
+| `z.object()` | object |
+| `z.enum()` | enum |
+| `z.literal("x")` | `"x"` |
+| `z.string().optional()` | string (Required: No) |
+
+## Discriminator Annotation
+
+Models with a discriminator include it in the output:
+
+```markdown
+**Discriminator:** `type` = `"article"`
+```
+
+## CLI
+
+```bash
+npx cosmio docs --format=markdown src/models/*.ts
+npx cosmio docs --format=markdown --output=models.md src/models/*.ts
+```
+
+## Programmatic Write
+
+```ts
+import { writeFileSync } from "node:fs";
+
+const doc = toMarkdownDoc([UserModel, OrderModel]);
+writeFileSync("models.md", doc);
+```

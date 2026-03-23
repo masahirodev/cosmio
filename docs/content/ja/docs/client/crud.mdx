@@ -1,0 +1,116 @@
+---
+title: CRUD 操作
+description: create, upsert, findById, replace, delete, patch, query, bulk 操作
+---
+
+すべての操作は `client.model(Model)` が返す `CosmioContainer` で利用できます。
+
+```ts
+const users = client.model(UserModel);
+```
+
+## create()
+
+```ts
+const user = await users.create({
+  id: "u1",
+  tenantId: "acme",
+  name: "Alice",
+  email: "alice@acme.com",
+});
+```
+
+[デフォルト値](/ja/docs/models/defaults)を持つフィールドはオプショナルです。書き込み前に Zod バリデーションが実行されます。
+
+## upsert()
+
+```ts
+const user = await users.upsert({
+  id: "u1",
+  tenantId: "acme",
+  name: "Alice Updated",
+  email: "alice@acme.com",
+});
+```
+
+## findById()
+
+`id` + パーティションキー値によるポイントリード。見つからない場合は `undefined` を返します:
+
+```ts
+const user = await users.findById("u1", ["acme"]);
+```
+
+## replace()
+
+オプティミスティック同時実行制御のための ETag 付きフルドキュメント置換:
+
+```ts
+await users.replace("u1", updatedDoc, { etag: '"some-etag"' });
+```
+
+## delete()
+
+ドキュメントを削除します。[論理削除](/ja/docs/client/soft-delete)が設定されている場合、物理削除の代わりにタイムスタンプを設定します:
+
+```ts
+await users.delete("u1", ["acme"]);
+```
+
+## patch()
+
+Cosmos DB のパッチ操作による部分更新:
+
+```ts
+await users.patch("u1", ["acme"], [
+  { op: "replace", path: "/name", value: "Bob" },
+  { op: "add", path: "/role", value: "admin" },
+]);
+```
+
+## query()
+
+Raw SQL クエリの実行。詳細は [Raw SQL](/ja/docs/queries/raw-sql) を参照:
+
+```ts
+const admins = await users.query(
+  {
+    query: "SELECT * FROM c WHERE c.role = @role",
+    parameters: [{ name: "@role", value: "admin" }],
+  },
+  ["acme"],
+);
+```
+
+## find()
+
+[クエリビルダー](/ja/docs/queries/query-builder)を開始:
+
+```ts
+const results = await users
+  .find(["acme"])
+  .where({ name: { contains: "Ali" } })
+  .orderBy("createdAt", "DESC")
+  .limit(10)
+  .exec();
+```
+
+## bulk()
+
+1回のリクエストで複数の操作を実行:
+
+```ts
+await users.bulk([
+  { type: "create", body: { id: "u2", tenantId: "acme", name: "Bob", email: "bob@acme.com" } },
+  { type: "upsert", body: { id: "u3", tenantId: "acme", name: "Carol", email: "carol@acme.com" } },
+  { type: "delete", id: "u4", partitionKeyValues: ["acme"] },
+]);
+```
+
+## 生のコンテナアクセス
+
+サポートされていない操作には、内部の Cosmos DB `Container` に直接アクセス:
+
+```ts
+users.raw; // @azure/cosmos Container インスタンス
+```

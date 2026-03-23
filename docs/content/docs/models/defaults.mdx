@@ -1,0 +1,76 @@
+---
+title: Defaults
+description: Auto-fill fields on create/upsert with static values or factory functions
+---
+
+The `defaults` option in `defineModel()` lets you auto-fill fields during `create()` and `upsert()`. Fields with defaults become **optional** in the input type.
+
+## Static Values
+
+```ts
+const TaskModel = defineModel({
+  name: "Task",
+  container: "tasks",
+  partitionKey: ["/projectId"],
+  schema: z.object({
+    id: z.string(),
+    projectId: z.string(),
+    title: z.string(),
+    status: z.string(),
+    priority: z.number(),
+  }),
+  defaults: {
+    status: "open",
+    priority: 0,
+  },
+});
+```
+
+## Factory Functions
+
+For dynamic values, pass a function. It is called on every `create()` / `upsert()`:
+
+```ts
+defaults: {
+  createdAt: () => Math.floor(Date.now() / 1000),
+  id: () => crypto.randomUUID(),
+}
+```
+
+## Type Inference
+
+Fields listed in `defaults` are automatically made optional in the input type. The output type retains all fields as required.
+
+```ts
+type TaskInput = typeof TaskModel._types.input;
+// { id: string; projectId: string; title: string; status?: string; priority?: number }
+
+type TaskOutput = typeof TaskModel._types.output;
+// { id: string; projectId: string; title: string; status: string; priority: number }
+```
+
+## Usage
+
+```ts
+const tasks = client.model(TaskModel);
+
+// status and priority are auto-filled
+const task = await tasks.create({
+  id: "t-1",
+  projectId: "proj-1",
+  title: "Fix login bug",
+});
+// → { id: "t-1", projectId: "proj-1", title: "Fix login bug", status: "open", priority: 0 }
+
+// You can still override defaults explicitly
+const urgent = await tasks.create({
+  id: "t-2",
+  projectId: "proj-1",
+  title: "Security patch",
+  priority: 10,
+});
+```
+
+## How It Works
+
+Defaults are applied **before** Zod validation. If a field is `undefined` in the input and has a default, the default value (or the return value of the factory function) is merged into the document before parsing.
