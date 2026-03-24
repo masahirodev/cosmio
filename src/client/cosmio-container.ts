@@ -410,6 +410,8 @@ export class CosmioContainer<
    */
   async bulk(operations: BulkOperation<TSchema, TDefaults>[]): Promise<void> {
     try {
+      // Track parsed records for cache invalidation (avoid double _applyDefaults)
+      const parsedRecords: Array<{ id: string; pkValues: readonly unknown[] } | undefined> = [];
       const cosmosOps = operations.map((op) => {
         switch (op.type) {
           case "create": {
@@ -420,6 +422,7 @@ export class CosmioContainer<
               this.model,
               parsed as Record<string, unknown>,
             ) as unknown as readonly unknown[];
+            parsedRecords.push(undefined); // create doesn't need point-cache invalidation
             return {
               operationType: "Create" as const,
               resourceBody: parsed as Record<string, unknown>,
@@ -430,19 +433,24 @@ export class CosmioContainer<
             const merged = this._applyDefaults(op.body);
             const parsed = this._validate(merged);
             this._validateDiscriminator(parsed);
+            const record = parsed as Record<string, unknown>;
             const pkValues = extractPartitionKey(
               this.model,
-              parsed as Record<string, unknown>,
+              record,
             ) as unknown as readonly unknown[];
+            parsedRecords.push({ id: record.id as string, pkValues });
             return {
               operationType: "Upsert" as const,
-              resourceBody: parsed as Record<string, unknown>,
+              resourceBody: record,
               partitionKey: buildPartitionKey(pkValues),
             };
           }
           case "delete":
+            parsedRecords.push({
+              id: op.id,
+              pkValues: op.partitionKeyValues as unknown as readonly unknown[],
+            });
             if (this.model.softDelete) {
-              // Soft delete: patch instead of physical delete
               return {
                 operationType: "Patch" as const,
                 id: op.id,
@@ -458,6 +466,7 @@ export class CosmioContainer<
               partitionKey: buildPartitionKey(op.partitionKeyValues),
             };
           default:
+            parsedRecords.push(undefined);
             throw new Error(`Unknown bulk operation type`);
         }
       });
@@ -483,23 +492,10 @@ export class CosmioContainer<
       // Invalidate caches after successful bulk
       const cache = this._getCache();
       if (cache) {
-        // Invalidate point-read caches for upsert/delete operations
-        for (const op of operations) {
-          if (op.type === "upsert") {
-            const record = this._applyDefaults(op.body) as Record<string, unknown>;
-            if (record.id) {
-              const pkVals = extractPartitionKey(
-                this.model,
-                record,
-              ) as unknown as readonly unknown[];
-              cache.invalidate(
-                ReadCache.buildKey(this.model.container, record.id as string, pkVals),
-              );
-            }
-          } else if (op.type === "delete") {
-            cache.invalidate(
-              ReadCache.buildKey(this.model.container, op.id, op.partitionKeyValues),
-            );
+        // Invalidate point-read caches using pre-collected parsed records
+        for (const record of parsedRecords) {
+          if (record) {
+            cache.invalidate(ReadCache.buildKey(this.model.container, record.id, record.pkValues));
           }
         }
         // Invalidate all query caches for this container

@@ -87,7 +87,7 @@ const fresh = await scoped.findById("u1", ["acme"]);
 | `replace()` | 該当 id のポイントリードキャッシュ + 全クエリキャッシュ |
 | `delete()` | 該当 id のポイントリードキャッシュ + 全クエリキャッシュ |
 | `patch()` | 該当 id のポイントリードキャッシュ + 全クエリキャッシュ |
-| `bulk()` | コンテナの全クエリキャッシュ |
+| `bulk()` | upsert/delete 対象のポイントリードキャッシュ + 全クエリキャッシュ |
 
 ```ts
 const scoped = users.scope();

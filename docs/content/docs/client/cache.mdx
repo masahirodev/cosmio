@@ -87,7 +87,7 @@ All write operations automatically invalidate the cache within the same scope:
 | `replace()` | Point-read cache for that id + all query caches |
 | `delete()` | Point-read cache for that id + all query caches |
 | `patch()` | Point-read cache for that id + all query caches |
-| `bulk()` | All query caches for the container |
+| `bulk()` | Point-read cache for upsert/delete targets + all query caches |
 
 ```ts
 const scoped = users.scope();

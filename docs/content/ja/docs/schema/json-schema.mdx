@@ -3,7 +3,7 @@ title: JSON Schema
 description: Cosmio拡張付きのモデル定義からJSON Schemaを生成
 ---
 
-Cosmioモデル定義から `zod-to-json-schema` を使用してJSON Schema（2019-09）を生成します。Cosmio固有の拡張が含まれます。
+Cosmioモデル定義から Zod v4 ネイティブの `toJSONSchema()` を使用して JSON Schema（2020-12）を生成します。Cosmio固有の拡張が含まれます。
 
 ## 単一モデル
 
@@ -18,7 +18,7 @@ console.log(JSON.stringify(schema, null, 2));
 
 ```json
 {
-  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "User",
   "description": "Application users",
   "x-cosmio-container": "users",

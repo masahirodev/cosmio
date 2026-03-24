@@ -167,8 +167,8 @@ See [QUERY_COVERAGE.md](./QUERY_COVERAGE.md) for detailed SQL generation coverag
 | Feature | Unit | Test File |
 |---------|------|-----------|
 | `inferSchema()` | ✅ | infer-schema.test.ts |
-| `generateModelSource()` | ❌ | — |
-| `toPascalCase()` | ❌ | — |
+| `generateModelSource()` | ✅ | codegen.test.ts |
+| `toPascalCase()` | ✅ | codegen.test.ts |
 | `sampleContainer()` | ❌ | — |
 | `pull()` | ❌ | — |
 
@@ -176,15 +176,15 @@ See [QUERY_COVERAGE.md](./QUERY_COVERAGE.md) for detailed SQL generation coverag
 
 | Feature | Unit | Test File |
 |---------|------|-----------|
-| `defineConfig()` | ❌ | — |
+| `defineConfig()` | ✅ | define-config.test.ts |
 | `loadConfig()` | ❌ | — |
 
 ## Utilities
 
 | Feature | Unit | Test File |
 |---------|------|-----------|
-| `ensureContainer()` | ✅ (via integration) | integration tests |
-| `ensureContainers()` conflict | ❌ | — |
+| `ensureContainer()` | ✅ | container-setup.test.ts |
+| `ensureContainers()` conflict | ✅ | container-setup.test.ts |
 | `extractPartitionKey()` | ✅ (indirect) | cosmio-container.test.ts |
 | `buildPartitionKey()` | ✅ (indirect) | cosmio-container.test.ts |
 | `extractDescriptions()` | ✅ (indirect) | define-model.test.ts |
@@ -202,6 +202,5 @@ See [QUERY_COVERAGE.md](./QUERY_COVERAGE.md) for detailed SQL generation coverag
 
 | Category | Missing Tests |
 |----------|--------------|
-| Introspect | `generateModelSource()`, `toPascalCase()`, `sampleContainer()`, `pull()` |
-| Config | `defineConfig()`, `loadConfig()` |
-| Utils | `ensureContainers()` conflict detection |
+| Introspect | `sampleContainer()`, `pull()` |
+| Config | `loadConfig()` |
