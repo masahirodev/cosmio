@@ -8,12 +8,17 @@ import { CosmioClient } from "../../src/client/cosmio-client.js";
  * 2. **Real Cosmos DB**: Set COSMOS_TEST_ENDPOINT + COSMOS_TEST_KEY
  */
 
-const EMULATOR_ENDPOINT = "http://localhost:8081";
+const EMULATOR_ENDPOINT = "https://localhost:8081";
 const EMULATOR_KEY =
   "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
 
 export const TEST_ENDPOINT = process.env.COSMOS_TEST_ENDPOINT ?? EMULATOR_ENDPOINT;
 export const TEST_KEY = process.env.COSMOS_TEST_KEY ?? EMULATOR_KEY;
+
+// Disable TLS verification for emulator's self-signed certificate
+if (!process.env.COSMOS_TEST_ENDPOINT) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
 
 const DB_PREFIX = process.env.COSMOS_TEST_DATABASE ?? "cosmio-test";
 
