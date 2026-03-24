@@ -69,22 +69,25 @@ describe("Query Builder (integration)", () => {
     await ensureContainer(client.database, TaskModel);
   }, 60_000);
 
-  /** Helper: seed data for a test and return cleanup function */
-  async function seedAndCleanup() {
+  /** Clean up all seed data */
+  async function cleanup() {
     for (const seed of seeds) {
-      await tasks.upsert(seed);
+      try {
+        await tasks.hardDelete(seed.id, [seed.projectId]);
+      } catch {}
     }
-    return async () => {
-      for (const seed of seeds) {
-        try {
-          await tasks.delete(seed.id, [seed.projectId]);
-        } catch {}
-      }
-    };
+  }
+
+  /** Seed data for a test (cleans first to ensure fresh state) */
+  async function seed() {
+    await cleanup();
+    for (const s of seeds) {
+      await tasks.create(s);
+    }
   }
 
   it("find all within a partition", async () => {
-    const cleanup = await seedAndCleanup();
+    await seed();
     try {
       const results = await tasks.find(["qb-p1"]).exec();
       expect(results).toHaveLength(4);
@@ -94,7 +97,7 @@ describe("Query Builder (integration)", () => {
   });
 
   it("where with equality", async () => {
-    const cleanup = await seedAndCleanup();
+    await seed();
     try {
       const results = await tasks.find(["qb-p1"]).where("status", "=", "closed").exec();
       expect(results).toHaveLength(1);
@@ -105,7 +108,7 @@ describe("Query Builder (integration)", () => {
   });
 
   it("where with CONTAINS", async () => {
-    const cleanup = await seedAndCleanup();
+    await seed();
     try {
       const results = await tasks.find(["qb-p1"]).where("title", "CONTAINS", "Fix").exec();
       expect(results).toHaveLength(2);
@@ -115,7 +118,7 @@ describe("Query Builder (integration)", () => {
   });
 
   it("where with comparison operator", async () => {
-    const cleanup = await seedAndCleanup();
+    await seed();
     try {
       const results = await tasks.find(["qb-p1"]).where("priority", ">=", 2).exec();
       expect(results).toHaveLength(2); // priority 3 and 2
@@ -125,7 +128,7 @@ describe("Query Builder (integration)", () => {
   });
 
   it("orderBy ascending", async () => {
-    const cleanup = await seedAndCleanup();
+    await seed();
     try {
       const results = await tasks.find(["qb-p1"]).orderBy("priority", "ASC").exec();
       expect(results[0]!.priority).toBeLessThanOrEqual(results[1]!.priority);
@@ -135,7 +138,7 @@ describe("Query Builder (integration)", () => {
   });
 
   it("orderBy descending", async () => {
-    const cleanup = await seedAndCleanup();
+    await seed();
     try {
       const results = await tasks.find(["qb-p1"]).orderBy("createdAt", "DESC").exec();
       expect(results[0]!.createdAt).toBe("2025-01-04");
@@ -145,7 +148,7 @@ describe("Query Builder (integration)", () => {
   });
 
   it("limit restricts result count", async () => {
-    const cleanup = await seedAndCleanup();
+    await seed();
     try {
       const results = await tasks.find(["qb-p1"]).limit(2).exec();
       expect(results).toHaveLength(2);
@@ -155,7 +158,7 @@ describe("Query Builder (integration)", () => {
   });
 
   it("combined where + orderBy + limit", async () => {
-    const cleanup = await seedAndCleanup();
+    await seed();
     try {
       const results = await tasks
         .find(["qb-p1"])
@@ -172,7 +175,7 @@ describe("Query Builder (integration)", () => {
   });
 
   it("raw query works", async () => {
-    const cleanup = await seedAndCleanup();
+    await seed();
     try {
       const results = await tasks.query(
         {
