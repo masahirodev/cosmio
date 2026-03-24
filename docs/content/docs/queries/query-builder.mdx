@@ -100,3 +100,83 @@ const results = await users
   .whereRaw("ARRAY_LENGTH(c.tags) > @minTags", { "@minTags": 2 })
   .exec();
 ```
+
+## Generated SQL Reference
+
+### SELECT
+
+| Method | Generated SQL |
+|--------|--------------|
+| `find()` | `SELECT * FROM c` |
+| `select("id", "name")` | `SELECT c.id, c.name FROM c` |
+| `limit(N)` | `SELECT TOP N * FROM c` |
+| `select("id").limit(5)` | `SELECT TOP 5 c.id FROM c` |
+
+### WHERE — Classic Style
+
+| Method | Generated SQL |
+|--------|--------------|
+| `.where("field", "=", val)` | `c.field = @p0` |
+| `.where("field", "!=", val)` | `c.field != @p0` |
+| `.where("field", ">", val)` | `c.field > @p0` |
+| `.where("field", ">=", val)` | `c.field >= @p0` |
+| `.where("field", "<", val)` | `c.field < @p0` |
+| `.where("field", "<=", val)` | `c.field <= @p0` |
+| `.where("field", "CONTAINS", val)` | `CONTAINS(c.field, @p0)` |
+| `.where("field", "STARTSWITH", val)` | `STARTSWITH(c.field, @p0)` |
+| `.where("field", "ENDSWITH", val)` | `ENDSWITH(c.field, @p0)` |
+| `.where("field", "ARRAY_CONTAINS", val)` | `ARRAY_CONTAINS(c.field, @p0)` |
+
+### WHERE — Prisma Style
+
+| Filter | Generated SQL |
+|--------|--------------|
+| `{ field: value }` | `c.field = @p0` |
+| `{ field: { equals: v } }` | `c.field = @p0` |
+| `{ field: { not: v } }` | `c.field != @p0` |
+| `{ field: { gt: v } }` | `c.field > @p0` |
+| `{ field: { gte: v } }` | `c.field >= @p0` |
+| `{ field: { lt: v } }` | `c.field < @p0` |
+| `{ field: { lte: v } }` | `c.field <= @p0` |
+| `{ field: { contains: v } }` | `CONTAINS(c.field, @p0)` |
+| `{ field: { startsWith: v } }` | `STARTSWITH(c.field, @p0)` |
+| `{ field: { endsWith: v } }` | `ENDSWITH(c.field, @p0)` |
+| `{ field: { in: [v1, v2] } }` | `ARRAY_CONTAINS(@p0, c.field)` |
+
+### Auto-injected WHERE Conditions
+
+| Condition | Generated SQL | When |
+|-----------|--------------|------|
+| Soft delete | `NOT IS_DEFINED(c.deletedAt)` | `softDelete.autoExclude` is true |
+| Discriminator | `c.type = @p0` | `discriminator` is configured |
+
+### ORDER BY / OFFSET LIMIT
+
+| Method | Generated SQL | Notes |
+|--------|--------------|-------|
+| `.orderBy("field")` | `ORDER BY c.field ASC` | Default ASC |
+| `.orderBy("field", "DESC")` | `ORDER BY c.field DESC` | |
+| `.offset(10).limit(20)` | `OFFSET 10 LIMIT 20` | Use with ORDER BY |
+| `.offset(10)` | `OFFSET 10 LIMIT 1000` | Default limit 1000 |
+
+### COUNT
+
+| Method | Generated SQL | Notes |
+|--------|--------------|-------|
+| `.count()` | `SELECT VALUE COUNT(1) FROM c [WHERE ...]` | ORDER BY / OFFSET LIMIT auto-stripped |
+
+### whereRaw
+
+| Method | Generated SQL | Notes |
+|--------|--------------|-------|
+| `.whereRaw("expr", params)` | `expr` appended to WHERE | Params injected via `@name` |
+
+### Partition Key Scoping
+
+Partition key values are passed via SDK `options.partitionKey`, not embedded in SQL.
+
+| Call | SQL | SDK Option |
+|------|-----|-----------|
+| `find(["t1"])` | `SELECT * FROM c` | `{ partitionKey: "t1" }` |
+| `find(["t1", "s1"])` | `SELECT * FROM c` | `{ partitionKey: ["t1", "s1"] }` |
+| `find()` | `SELECT * FROM c` | No PK (cross-partition) |
