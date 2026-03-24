@@ -480,6 +480,9 @@ export class CosmioContainer<
           });
         }
       }
+      // Invalidate query caches after successful bulk (data may have changed)
+      const cache = this._getCache();
+      if (cache) cache.invalidateByPrefix(`query::${this.model.container}::`);
     } catch (error) {
       throw mapCosmosError(error);
     }

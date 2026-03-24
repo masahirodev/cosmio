@@ -54,12 +54,40 @@ export async function httpTrigger(req: HttpRequest): Promise<HttpResponseInit> {
 
 The underlying `ReadCache` supports TTL and size limits:
 
-- Default TTL: 30 seconds
+- **Default TTL: Infinity** (no expiration — cache lives until the scope is GC'd)
 - Default max entries: 1000
+
+For request-scoped usage (`scope()` / `withCosmioContext`), Infinity is correct because the cache is discarded when the request ends. If you need a custom TTL:
+
+```ts
+import { ReadCache } from "cosmio";
+
+const cache = new ReadCache({ ttlMs: 5000, maxSize: 500 });
+```
+
+## Deep Copy Safety
+
+All cached values are deep-copied via `structuredClone()` on both **read and write**. This prevents mutation of cached data from affecting other reads:
+
+```ts
+const user = await scoped.findById("u1", ["acme"]);
+user.name = "Modified"; // does NOT corrupt the cache
+const fresh = await scoped.findById("u1", ["acme"]);
+// fresh.name is still the original value
+```
 
 ## Cache Invalidation
 
-Writes (`upsert`, `replace`) automatically invalidate the corresponding cache entry within the same scope:
+All write operations automatically invalidate the cache within the same scope:
+
+| Operation | What gets invalidated |
+|-----------|----------------------|
+| `create()` | All query caches for the container |
+| `upsert()` | Point-read cache for that id + all query caches |
+| `replace()` | Point-read cache for that id + all query caches |
+| `delete()` | Point-read cache for that id + all query caches |
+| `patch()` | Point-read cache for that id + all query caches |
+| `bulk()` | All query caches for the container |
 
 ```ts
 const scoped = users.scope();
@@ -67,6 +95,16 @@ const user = await scoped.findById("u1", ["acme"]);   // cached
 await scoped.upsert({ ...user, name: "Updated" });     // invalidates cache
 const fresh = await scoped.findById("u1", ["acme"]);   // reads from DB
 ```
+
+### Query Cache
+
+Query results (`find().exec()`) are also cached within a scope. The cache key includes the full SQL query, parameters, and partition key:
+
+```
+query::<container>::<sql>::<params>::<partitionKey>
+```
+
+Any write operation invalidates all query caches for that container (since the write may affect query results).
 
 ## When to Use
 
