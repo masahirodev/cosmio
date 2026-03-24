@@ -47,6 +47,7 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     needs: check
+    # Allow workflow to pass even if emulator is unstable (not a required check)
     continue-on-error: true
     services:
       cosmosdb:
