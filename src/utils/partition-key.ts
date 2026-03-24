@@ -22,7 +22,7 @@ export function extractPartitionKey<
   TSchema extends z.ZodObject<z.ZodRawShape>,
   TPaths extends readonly [string, ...string[]],
 >(
-  model: ModelDefinition<TSchema, TPaths>,
+  model: ModelDefinition<TSchema, TPaths, any, any>,
   document: Record<string, unknown>,
 ): PartitionKeyValues<TSchema, TPaths> {
   return model.partitionKey.map((path) => {

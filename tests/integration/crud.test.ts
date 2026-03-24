@@ -3,11 +3,13 @@ import { z } from "zod";
 import { ConflictError, ValidationError } from "../../src/errors/index.js";
 import { defineModel } from "../../src/model/define-model.js";
 import { ensureContainer } from "../../src/utils/container-setup.js";
-import { cleanupTestDatabase, createTestClient, ensureTestDatabase } from "./setup.js";
+import { createTestClient, setupTestDatabase, teardownTestDatabase } from "./setup.js";
+
+const TEST_FILE = "crud";
 
 const UserModel = defineModel({
   name: "User",
-  container: "users",
+  container: "test-crud",
   partitionKey: ["/tenantId"],
   schema: z.object({
     id: z.string(),
@@ -19,100 +21,106 @@ const UserModel = defineModel({
 });
 
 describe("CRUD operations", () => {
-  const client = createTestClient();
+  const client = createTestClient(TEST_FILE);
   const users = client.model(UserModel);
 
   beforeAll(async () => {
-    await ensureTestDatabase();
+    await setupTestDatabase(TEST_FILE);
     await ensureContainer(client.database, UserModel);
   }, 60_000);
 
   afterAll(async () => {
-    await cleanupTestDatabase();
+    await teardownTestDatabase(TEST_FILE);
   });
 
   it("create → findById → delete", async () => {
     const doc = await users.create({
-      id: "user-1",
+      id: "crud-1",
       tenantId: "t1",
       name: "Alice",
       email: "alice@example.com",
     });
 
-    expect(doc.id).toBe("user-1");
+    expect(doc.id).toBe("crud-1");
     expect(doc.name).toBe("Alice");
 
-    const found = await users.findById("user-1", ["t1"]);
+    const found = await users.findById("crud-1", ["t1"]);
     expect(found).toBeDefined();
     expect(found!.name).toBe("Alice");
 
-    await users.delete("user-1", ["t1"]);
+    await users.delete("crud-1", ["t1"]);
 
-    const deleted = await users.findById("user-1", ["t1"]);
+    const deleted = await users.findById("crud-1", ["t1"]);
     expect(deleted).toBeUndefined();
   });
 
   it("upsert creates and then updates", async () => {
     await users.upsert({
-      id: "user-2",
+      id: "crud-2",
       tenantId: "t1",
       name: "Bob",
       email: "bob@example.com",
     });
 
-    const created = await users.findById("user-2", ["t1"]);
+    const created = await users.findById("crud-2", ["t1"]);
     expect(created!.name).toBe("Bob");
 
     await users.upsert({
-      id: "user-2",
+      id: "crud-2",
       tenantId: "t1",
       name: "Bob Updated",
       email: "bob@example.com",
     });
 
-    const updated = await users.findById("user-2", ["t1"]);
+    const updated = await users.findById("crud-2", ["t1"]);
     expect(updated!.name).toBe("Bob Updated");
 
-    await users.delete("user-2", ["t1"]);
+    try {
+      await users.delete("crud-2", ["t1"]);
+    } catch {}
   });
 
   it("replace overwrites the document", async () => {
     await users.create({
-      id: "user-3",
+      id: "crud-3",
       tenantId: "t1",
       name: "Charlie",
       email: "charlie@example.com",
     });
 
-    await users.replace("user-3", {
-      id: "user-3",
+    await users.replace("crud-3", {
+      id: "crud-3",
       tenantId: "t1",
       name: "Charlie Replaced",
       email: "charlie-new@example.com",
     });
 
-    const replaced = await users.findById("user-3", ["t1"]);
+    const replaced = await users.findById("crud-3", ["t1"]);
     expect(replaced!.name).toBe("Charlie Replaced");
     expect(replaced!.email).toBe("charlie-new@example.com");
 
-    await users.delete("user-3", ["t1"]);
+    try {
+      await users.delete("crud-3", ["t1"]);
+    } catch {}
   });
 
   it("patch performs partial update", async () => {
     await users.create({
-      id: "user-4",
+      id: "crud-4",
       tenantId: "t1",
       name: "Dave",
       email: "dave@example.com",
     });
 
-    await users.patch("user-4", ["t1"], [{ op: "replace", path: "/name", value: "Dave Patched" }]);
+    await users.patch("crud-4", ["t1"], [{ op: "replace", path: "/name", value: "Dave Patched" }]);
 
-    const patched = await users.findById("user-4", ["t1"]);
+    const patched = await users.findById("crud-4", ["t1"]);
     expect(patched!.name).toBe("Dave Patched");
     expect(patched!.email).toBe("dave@example.com"); // unchanged
 
-    await users.delete("user-4", ["t1"]);
+    try {
+      await users.delete("crud-4", ["t1"]);
+    } catch {}
   });
 
   it("create rejects invalid data with ValidationError", async () => {
@@ -128,7 +136,7 @@ describe("CRUD operations", () => {
 
   it("create duplicate id throws ConflictError", async () => {
     await users.create({
-      id: "user-dup",
+      id: "crud-dup",
       tenantId: "t1",
       name: "First",
       email: "first@example.com",
@@ -136,13 +144,15 @@ describe("CRUD operations", () => {
 
     await expect(
       users.create({
-        id: "user-dup",
+        id: "crud-dup",
         tenantId: "t1",
         name: "Second",
         email: "second@example.com",
       }),
     ).rejects.toThrow(ConflictError);
 
-    await users.delete("user-dup", ["t1"]);
+    try {
+      await users.delete("crud-dup", ["t1"]);
+    } catch {}
   });
 });

@@ -12,7 +12,7 @@ export interface CodegenOptions {
   partitionKeyPaths: string[];
   schema: InferredSchema;
   metadata: ContainerMetadata;
-  includeIndexingPolicy?: boolean;
+  includeIndexingPolicy?: boolean | undefined;
 }
 
 /**

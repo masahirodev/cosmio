@@ -2,6 +2,19 @@ import type { ContainerRequest, Database } from "@azure/cosmos";
 import type { z } from "zod";
 import type { ModelDefinition } from "../model/model-types.js";
 
+/**
+ * Build a partition key definition compatible with both @azure/cosmos v3 and v4.
+ * Uses Record<string, unknown> to bypass v3/v4 type differences for `kind`.
+ */
+function buildPartitionKeyDef(paths: string[]): Record<string, unknown> {
+  const def: Record<string, unknown> = {
+    paths: [...paths],
+    kind: paths.length > 1 ? "MultiHash" : "Hash",
+  };
+  if (paths.length > 1) def.version = 2;
+  return def;
+}
+
 export interface EnsureContainerOptions {
   /** Fixed throughput (RU/s). Mutually exclusive with maxThroughput. */
   throughput?: number;
@@ -23,13 +36,10 @@ export async function ensureContainer<
   options?: EnsureContainerOptions,
 ): Promise<void> {
   const partitionKeyPaths = model.partitionKey as unknown as string[];
-  const containerDef: ContainerRequest = {
+  const containerDef = {
     id: model.container,
-    partitionKey: {
-      paths: [...partitionKeyPaths],
-      ...(partitionKeyPaths.length > 1 ? { version: 2 as const } : {}),
-    },
-  };
+    partitionKey: buildPartitionKeyDef(partitionKeyPaths),
+  } as unknown as ContainerRequest;
 
   if (model.indexingPolicy) {
     containerDef.indexingPolicy = model.indexingPolicy;
@@ -81,6 +91,9 @@ export async function ensureContainers(
     if (existing) {
       // Check for conflicting settings
       const conflicts: string[] = [];
+      if (JSON.stringify(existing.partitionKey) !== JSON.stringify(model.partitionKey)) {
+        conflicts.push("partitionKey");
+      }
       if (JSON.stringify(existing.indexingPolicy) !== JSON.stringify(model.indexingPolicy)) {
         conflicts.push("indexingPolicy");
       }

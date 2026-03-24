@@ -306,7 +306,7 @@ export function analyze(inputs: ModelWithPatterns[]): AdvisorReport {
     // Attribute array if many optional fields
     const schemaShape = model.schema.shape;
     const optionalCount = Object.values(schemaShape).filter(
-      (v) => (v as { _def: { typeName: string } })._def.typeName === "ZodOptional",
+      (v) => (v as unknown as { _def: Record<string, unknown> })._def.type === "optional",
     ).length;
     if (optionalCount >= 5) {
       addPatternRec(

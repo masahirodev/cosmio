@@ -3,11 +3,13 @@ import { z } from "zod";
 import { withCosmioContext } from "../../src/integrations/azure-functions.js";
 import { defineModel } from "../../src/model/define-model.js";
 import { ensureContainer } from "../../src/utils/container-setup.js";
-import { cleanupTestDatabase, createTestClient, ensureTestDatabase } from "./setup.js";
+import { createTestClient, setupTestDatabase, teardownTestDatabase } from "./setup.js";
+
+const TEST_FILE = "hooks-cache";
 
 const NoteModel = defineModel({
   name: "Note",
-  container: "notes",
+  container: "test-hooks-cache",
   partitionKey: ["/userId"],
   schema: z.object({
     id: z.string(),
@@ -22,22 +24,16 @@ const NoteModel = defineModel({
 });
 
 describe("Hooks + Cache (integration)", () => {
-  const client = createTestClient();
+  const client = createTestClient(TEST_FILE);
   const notes = client.model(NoteModel);
 
   beforeAll(async () => {
-    await ensureTestDatabase();
+    await setupTestDatabase(TEST_FILE);
     await ensureContainer(client.database, NoteModel);
   }, 60_000);
 
   afterAll(async () => {
-    try {
-      await notes.hardDelete("n1", ["u1"]);
-      await notes.hardDelete("n2", ["u1"]);
-    } catch {
-      // ignore
-    }
-    await cleanupTestDatabase();
+    await teardownTestDatabase(TEST_FILE);
   });
 
   it("beforeCreate hook mutates document before write", async () => {
@@ -46,71 +42,100 @@ describe("Hooks + Cache (integration)", () => {
     });
 
     const created = await notes.create({
-      id: "n1",
+      id: "hc-n1",
       userId: "u1",
       title: "Test Note",
     });
 
     expect(created.updatedBy).toBe("hook-system");
 
-    const found = await notes.findById("n1", ["u1"]);
+    const found = await notes.findById("hc-n1", ["u1"]);
     expect(found!.updatedBy).toBe("hook-system");
+
+    try {
+      await notes.delete("hc-n1", ["u1"]);
+    } catch {}
   });
 
   it("defaults auto-fill body field", async () => {
     const created = await notes.create({
-      id: "n2",
+      id: "hc-n2",
       userId: "u1",
       title: "No Body",
     });
 
     expect(created.body).toBe("");
+
+    try {
+      await notes.delete("hc-n2", ["u1"]);
+    } catch {}
   });
 
   it("request-scoped cache works via withCosmioContext", async () => {
-    await withCosmioContext(async () => {
-      // First read
-      const note1 = await notes.findById("n1", ["u1"]);
-      expect(note1).toBeDefined();
+    await notes.create({ id: "hc-n3", userId: "u1", title: "Cache Test" });
 
-      // Second read — should be cached (can't easily count DB calls here,
-      // but we verify the value is the same)
-      const note2 = await notes.findById("n1", ["u1"]);
-      expect(note2).toBeDefined();
-      expect(note2!.id).toBe(note1!.id);
-      expect(note2!.title).toBe(note1!.title);
-    });
+    try {
+      await withCosmioContext(async () => {
+        const note1 = await notes.findById("hc-n3", ["u1"]);
+        expect(note1).toBeDefined();
+
+        const note2 = await notes.findById("hc-n3", ["u1"]);
+        expect(note2).toBeDefined();
+        expect(note2!.id).toBe(note1!.id);
+        expect(note2!.title).toBe(note1!.title);
+      });
+    } finally {
+      try {
+        await notes.delete("hc-n3", ["u1"]);
+      } catch {}
+    }
   });
 
   it("cache invalidation after write", async () => {
-    await withCosmioContext(async () => {
-      // Read
-      const before = await notes.findById("n1", ["u1"]);
-      expect(before!.title).toBe("Test Note");
+    await notes.create({ id: "hc-n4", userId: "u1", title: "Before Patch" });
 
-      // Update
-      await notes.patch("n1", ["u1"], [{ op: "replace", path: "/title", value: "Updated Title" }]);
+    try {
+      await withCosmioContext(async () => {
+        const before = await notes.findById("hc-n4", ["u1"]);
+        expect(before!.title).toBe("Before Patch");
 
-      // Read again — should get fresh data (cache invalidated by patch)
-      const after = await notes.findById("n1", ["u1"]);
-      expect(after!.title).toBe("Updated Title");
-    });
+        await notes.patch(
+          "hc-n4",
+          ["u1"],
+          [{ op: "replace", path: "/title", value: "After Patch" }],
+        );
+
+        const after = await notes.findById("hc-n4", ["u1"]);
+        expect(after!.title).toBe("After Patch");
+      });
+    } finally {
+      try {
+        await notes.delete("hc-n4", ["u1"]);
+      } catch {}
+    }
   });
 
   it("query cache within context", async () => {
-    await withCosmioContext(async () => {
-      const r1 = await notes
-        .find(["u1"])
-        .where({ title: { contains: "Updated" } })
-        .exec();
-      const r2 = await notes
-        .find(["u1"])
-        .where({ title: { contains: "Updated" } })
-        .exec();
+    await notes.create({ id: "hc-n5", userId: "u1", title: "QueryCache Test" });
 
-      // Same results
-      expect(r1.length).toBe(r2.length);
-      expect(r1.map((r) => r.id).sort()).toEqual(r2.map((r) => r.id).sort());
-    });
+    try {
+      await withCosmioContext(async () => {
+        const r1 = await notes
+          .find(["u1"])
+          .where({ title: { contains: "QueryCache" } })
+          .exec();
+        const r2 = await notes
+          .find(["u1"])
+          .where({ title: { contains: "QueryCache" } })
+          .exec();
+
+        expect(r1.length).toBe(r2.length);
+        expect(r1.map((r) => r.id).sort()).toEqual(r2.map((r) => r.id).sort());
+      });
+    } finally {
+      try {
+        await notes.delete("hc-n5", ["u1"]);
+      } catch {}
+    }
   });
 });

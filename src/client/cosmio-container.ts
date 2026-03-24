@@ -252,9 +252,9 @@ export class CosmioContainer<
     if (this.model.softDelete) {
       try {
         const pk = buildPartitionKey(partitionKeyValues as unknown as readonly unknown[]);
-        await this._container
-          .item(id, pk as string | number | boolean)
-          .patch([{ op: "set", path: `/${this.model.softDelete.field}`, value: Date.now() }]);
+        await this._container.item(id, pk as string | number | boolean).patch({
+          operations: [{ op: "set", path: `/${this.model.softDelete.field}`, value: Date.now() }],
+        });
       } catch (error) {
         throw mapCosmosError(error);
       }
@@ -305,7 +305,7 @@ export class CosmioContainer<
       const pk = buildPartitionKey(partitionKeyValues as unknown as readonly unknown[]);
       const { resource } = await this._container
         .item(id, pk as string | number | boolean)
-        .patch([{ op: "remove", path: `/${this.model.softDelete.field}` }]);
+        .patch({ operations: [{ op: "remove", path: `/${this.model.softDelete.field}` }] });
       if (!resource) return undefined;
       return this._processReadAsync(resource as Record<string, unknown>);
     } catch (error) {
@@ -348,9 +348,11 @@ export class CosmioContainer<
     this._invalidateCache(id, partitionKeyValues as unknown as readonly unknown[]);
     try {
       const pk = buildPartitionKey(partitionKeyValues as unknown as readonly unknown[]);
+      // Wrap array form into object form for compatibility with vnext emulator
+      const patchBody = Array.isArray(operations) ? { operations } : operations;
       const { resource } = await this._container
         .item(id, pk as string | number | boolean)
-        .patch(operations);
+        .patch(patchBody);
       if (!resource) throw new CosmioError("Patch returned no resource", "COSMOS_ERROR");
       return this._processReadAsync(resource as Record<string, unknown>);
     } catch (error) {
@@ -408,6 +410,8 @@ export class CosmioContainer<
    */
   async bulk(operations: BulkOperation<TSchema, TDefaults>[]): Promise<void> {
     try {
+      // Track parsed records for cache invalidation (avoid double _applyDefaults)
+      const parsedRecords: Array<{ id: string; pkValues: readonly unknown[] } | undefined> = [];
       const cosmosOps = operations.map((op) => {
         switch (op.type) {
           case "create": {
@@ -418,6 +422,7 @@ export class CosmioContainer<
               this.model,
               parsed as Record<string, unknown>,
             ) as unknown as readonly unknown[];
+            parsedRecords.push(undefined); // create doesn't need point-cache invalidation
             return {
               operationType: "Create" as const,
               resourceBody: parsed as Record<string, unknown>,
@@ -428,19 +433,24 @@ export class CosmioContainer<
             const merged = this._applyDefaults(op.body);
             const parsed = this._validate(merged);
             this._validateDiscriminator(parsed);
+            const record = parsed as Record<string, unknown>;
             const pkValues = extractPartitionKey(
               this.model,
-              parsed as Record<string, unknown>,
+              record,
             ) as unknown as readonly unknown[];
+            parsedRecords.push({ id: record.id as string, pkValues });
             return {
               operationType: "Upsert" as const,
-              resourceBody: parsed as Record<string, unknown>,
+              resourceBody: record,
               partitionKey: buildPartitionKey(pkValues),
             };
           }
           case "delete":
+            parsedRecords.push({
+              id: op.id,
+              pkValues: op.partitionKeyValues as unknown as readonly unknown[],
+            });
             if (this.model.softDelete) {
-              // Soft delete: patch instead of physical delete
               return {
                 operationType: "Patch" as const,
                 id: op.id,
@@ -456,6 +466,7 @@ export class CosmioContainer<
               partitionKey: buildPartitionKey(op.partitionKeyValues),
             };
           default:
+            parsedRecords.push(undefined);
             throw new Error(`Unknown bulk operation type`);
         }
       });
@@ -477,6 +488,18 @@ export class CosmioContainer<
             message: `Bulk operation had ${failures.length} failure(s): ${details}`,
           });
         }
+      }
+      // Invalidate caches after successful bulk
+      const cache = this._getCache();
+      if (cache) {
+        // Invalidate point-read caches using pre-collected parsed records
+        for (const record of parsedRecords) {
+          if (record) {
+            cache.invalidate(ReadCache.buildKey(this.model.container, record.id, record.pkValues));
+          }
+        }
+        // Invalidate all query caches for this container
+        cache.invalidateByPrefix(`query::${this.model.container}::`);
       }
     } catch (error) {
       throw mapCosmosError(error);
@@ -592,9 +615,9 @@ export class CosmioContainer<
     try {
       const pk = buildPartitionKey(pkArray);
       if (this.model.softDelete) {
-        const response = await this._container
-          .item(id, pk as string | number | boolean)
-          .patch([{ op: "set", path: `/${this.model.softDelete.field}`, value: Date.now() }]);
+        const response = await this._container.item(id, pk as string | number | boolean).patch({
+          operations: [{ op: "set", path: `/${this.model.softDelete.field}`, value: Date.now() }],
+        });
         await this._hooks.run("afterDelete", { id } as Record<string, unknown>);
         return { result: undefined, ru: extractRU(response.headers) };
       }

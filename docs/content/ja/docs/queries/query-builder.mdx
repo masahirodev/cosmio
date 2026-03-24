@@ -100,3 +100,83 @@ const results = await users
   .whereRaw("ARRAY_LENGTH(c.tags) > @minTags", { "@minTags": 2 })
   .exec();
 ```
+
+## 生成される SQL リファレンス
+
+### SELECT
+
+| メソッド | 生成される SQL |
+|---------|--------------|
+| `find()` | `SELECT * FROM c` |
+| `select("id", "name")` | `SELECT c.id, c.name FROM c` |
+| `limit(N)` | `SELECT TOP N * FROM c` |
+| `select("id").limit(5)` | `SELECT TOP 5 c.id FROM c` |
+
+### WHERE — クラシック構文
+
+| メソッド | 生成される SQL |
+|---------|--------------|
+| `.where("field", "=", val)` | `c.field = @p0` |
+| `.where("field", "!=", val)` | `c.field != @p0` |
+| `.where("field", ">", val)` | `c.field > @p0` |
+| `.where("field", ">=", val)` | `c.field >= @p0` |
+| `.where("field", "<", val)` | `c.field < @p0` |
+| `.where("field", "<=", val)` | `c.field <= @p0` |
+| `.where("field", "CONTAINS", val)` | `CONTAINS(c.field, @p0)` |
+| `.where("field", "STARTSWITH", val)` | `STARTSWITH(c.field, @p0)` |
+| `.where("field", "ENDSWITH", val)` | `ENDSWITH(c.field, @p0)` |
+| `.where("field", "ARRAY_CONTAINS", val)` | `ARRAY_CONTAINS(c.field, @p0)` |
+
+### WHERE — Prisma 風
+
+| フィルタ | 生成される SQL |
+|---------|--------------|
+| `{ field: value }` | `c.field = @p0` |
+| `{ field: { equals: v } }` | `c.field = @p0` |
+| `{ field: { not: v } }` | `c.field != @p0` |
+| `{ field: { gt: v } }` | `c.field > @p0` |
+| `{ field: { gte: v } }` | `c.field >= @p0` |
+| `{ field: { lt: v } }` | `c.field < @p0` |
+| `{ field: { lte: v } }` | `c.field <= @p0` |
+| `{ field: { contains: v } }` | `CONTAINS(c.field, @p0)` |
+| `{ field: { startsWith: v } }` | `STARTSWITH(c.field, @p0)` |
+| `{ field: { endsWith: v } }` | `ENDSWITH(c.field, @p0)` |
+| `{ field: { in: [v1, v2] } }` | `ARRAY_CONTAINS(@p0, c.field)` |
+
+### 自動付与される WHERE 条件
+
+| 条件 | 生成される SQL | 付与タイミング |
+|------|--------------|---------------|
+| ソフトデリート除外 | `NOT IS_DEFINED(c.deletedAt)` | `softDelete.autoExclude` が true |
+| discriminator | `c.type = @p0` | `discriminator` 設定時 |
+
+### ORDER BY / OFFSET LIMIT
+
+| メソッド | 生成される SQL | 備考 |
+|---------|--------------|------|
+| `.orderBy("field")` | `ORDER BY c.field ASC` | デフォルト ASC |
+| `.orderBy("field", "DESC")` | `ORDER BY c.field DESC` | |
+| `.offset(10).limit(20)` | `OFFSET 10 LIMIT 20` | ORDER BY との併用推奨 |
+| `.offset(10)` | `OFFSET 10 LIMIT 1000` | limit 未指定時はデフォルト 1000 |
+
+### COUNT
+
+| メソッド | 生成される SQL | 備考 |
+|---------|--------------|------|
+| `.count()` | `SELECT VALUE COUNT(1) FROM c [WHERE ...]` | ORDER BY / OFFSET LIMIT は自動除去 |
+
+### whereRaw
+
+| メソッド | 生成される SQL | 備考 |
+|---------|--------------|------|
+| `.whereRaw("expr", params)` | `expr` がそのまま WHERE に追加 | パラメータは `@name` で注入 |
+
+### パーティションキーのスコーピング
+
+PK 値は SQL に含まれず、SDK の `options.partitionKey` として渡される。
+
+| 呼び出し | SQL | SDK オプション |
+|---------|-----|---------------|
+| `find(["t1"])` | `SELECT * FROM c` | `{ partitionKey: "t1" }` |
+| `find(["t1", "s1"])` | `SELECT * FROM c` | `{ partitionKey: ["t1", "s1"] }` |
+| `find()` | `SELECT * FROM c` | PK なし（クロスパーティション） |

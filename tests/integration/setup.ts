@@ -2,56 +2,66 @@ import { CosmosClient } from "@azure/cosmos";
 import { CosmioClient } from "../../src/client/cosmio-client.js";
 
 /**
- * Cosmos DB Emulator default connection settings.
- * The vnext-preview emulator uses a well-known key.
+ * Integration test connection settings.
+ *
+ * 1. **Emulator** (default): `docker compose up -d`
+ * 2. **Real Cosmos DB**: Set COSMOS_TEST_ENDPOINT + COSMOS_TEST_KEY
  */
-export const EMULATOR_ENDPOINT = "https://localhost:8081";
-export const EMULATOR_KEY =
+
+const EMULATOR_ENDPOINT = "http://localhost:8081";
+const EMULATOR_KEY =
   "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
-export const TEST_DATABASE = "cosmio-test";
+
+export const TEST_ENDPOINT = process.env.COSMOS_TEST_ENDPOINT ?? EMULATOR_ENDPOINT;
+export const TEST_KEY = process.env.COSMOS_TEST_KEY ?? EMULATOR_KEY;
+
+const DB_PREFIX = process.env.COSMOS_TEST_DATABASE ?? "cosmio-test";
 
 /**
- * Create a CosmosClient configured for the local emulator.
- * Disables TLS verification since the emulator uses a self-signed cert.
+ * Get a unique database name for a test file.
+ * Each file gets its own DB to avoid cross-file interference.
  */
-export function createEmulatorCosmosClient(): CosmosClient {
-  // Disable TLS check for emulator's self-signed cert
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-
-  return new CosmosClient({
-    endpoint: EMULATOR_ENDPOINT,
-    key: EMULATOR_KEY,
-  });
+export function testDatabaseName(testFileName: string): string {
+  return `${DB_PREFIX}-${testFileName}`;
 }
 
 /**
- * Create a CosmioClient configured for the local emulator.
+ * Create a raw CosmosClient for test setup/teardown.
  */
-export function createTestClient(): CosmioClient {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+export function createCosmosClient(): CosmosClient {
+  return new CosmosClient({ endpoint: TEST_ENDPOINT, key: TEST_KEY });
+}
 
+/**
+ * Create a CosmioClient for a specific test file.
+ * Each file uses its own database.
+ */
+export function createTestClient(testFileName: string): CosmioClient {
   return new CosmioClient(
-    { cosmos: { endpoint: EMULATOR_ENDPOINT, key: EMULATOR_KEY }, database: TEST_DATABASE },
+    {
+      cosmos: { endpoint: TEST_ENDPOINT, key: TEST_KEY },
+      database: testDatabaseName(testFileName),
+    },
     { singleton: false },
   );
 }
 
 /**
- * Ensure the test database exists, creating it if needed.
+ * Setup: create the database for this test file.
  */
-export async function ensureTestDatabase(): Promise<void> {
-  const cosmos = createEmulatorCosmosClient();
-  await cosmos.databases.createIfNotExists({ id: TEST_DATABASE });
+export async function setupTestDatabase(testFileName: string): Promise<void> {
+  const cosmos = createCosmosClient();
+  await cosmos.databases.createIfNotExists({ id: testDatabaseName(testFileName) });
 }
 
 /**
- * Clean up: delete the test database.
+ * Teardown: delete the database for this test file.
  */
-export async function cleanupTestDatabase(): Promise<void> {
-  const cosmos = createEmulatorCosmosClient();
+export async function teardownTestDatabase(testFileName: string): Promise<void> {
+  const cosmos = createCosmosClient();
   try {
-    await cosmos.database(TEST_DATABASE).delete();
+    await cosmos.database(testDatabaseName(testFileName)).delete();
   } catch {
-    // ignore if not exists
+    // ignore
   }
 }

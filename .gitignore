@@ -2,7 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 .env
-.env.local
+.env.*
+
+CLAUDE.md
 .claude/
 docs/.next/
 docs/node_modules/

@@ -13,12 +13,17 @@ export class ReadCache {
   private readonly _maxSize: number;
 
   constructor(options?: {
-    /** Default cache TTL in milliseconds (default: 30000 = 30s) */
+    /**
+     * Default cache TTL in milliseconds.
+     * Default: Infinity (no expiration — cache lives until scope is GC'd).
+     * For request-scoped usage (scope() / withCosmioContext), Infinity is correct
+     * because the cache is discarded when the request ends.
+     */
     ttlMs?: number;
     /** Maximum number of cached entries (default: 1000) */
     maxSize?: number;
   }) {
-    this._defaultTtlMs = options?.ttlMs ?? 30_000;
+    this._defaultTtlMs = options?.ttlMs ?? Number.POSITIVE_INFINITY;
     this._maxSize = options?.maxSize ?? 1000;
   }
 

@@ -7,7 +7,7 @@ services:
     environment:
       - AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE=false
     healthcheck:
-      test: ["CMD", "curl", "-fk", "https://localhost:8081/_explorer/emulator.pem"]
+      test: ["CMD", "curl", "-f", "http://localhost:8081/"]
       interval: 5s
       timeout: 5s
       retries: 20

@@ -2,7 +2,7 @@ import type { Container, JSONValue, SqlParameter, SqlQuerySpec } from "@azure/co
 import type { z } from "zod";
 import { mapCosmosError } from "../errors/index.js";
 import { getInvocationCache } from "../integrations/azure-functions.js";
-import type { DefaultsMap, DtoMap, ModelDefinition, ResolveDtoRule } from "../model/model-types.js";
+import type { DtoMap, ModelDefinition, ResolveDtoRule } from "../model/model-types.js";
 import type { DocumentRead } from "../types/inference.js";
 import type {
   BooleanFilter,
@@ -116,8 +116,8 @@ export class QueryBuilder<
   TPaths extends readonly [string, ...string[]],
 > {
   private readonly _container: Container;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- accept models with any DtoMap
-  private readonly _model: ModelDefinition<TSchema, TPaths, DefaultsMap<TSchema>, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- accept models with any defaults/DtoMap
+  private readonly _model: ModelDefinition<TSchema, TPaths, any, any>;
   private readonly _partitionKeyValues: readonly unknown[] | undefined;
   private readonly _postProcess:
     | ((
@@ -140,8 +140,7 @@ export class QueryBuilder<
 
   constructor(
     container: Container,
-    // biome-ignore lint/suspicious/noExplicitAny: accept models with any DtoMap
-    model: ModelDefinition<TSchema, TPaths, DefaultsMap<TSchema>, any>,
+    model: ModelDefinition<TSchema, TPaths, any, any>,
     partitionKeyValues?: readonly unknown[],
     postProcess?: (
       docs: Record<string, unknown>[],
@@ -360,7 +359,13 @@ export class QueryBuilder<
         .query<number>({ query: countQuery, parameters: baseSpec.parameters ?? [] }, options)
         .fetchAll();
 
-      return resources[0] ?? 0;
+      const result = resources[0];
+      if (result === undefined || result === null) return 0;
+      // Handle both direct number and { count: N } (vnext emulator returns object)
+      if (typeof result === "number") return result;
+      if (typeof result === "object" && "count" in (result as object))
+        return (result as { count: number }).count;
+      return 0;
     } catch (error) {
       throw mapCosmosError(error);
     }
@@ -419,7 +424,7 @@ export class QueryBuilder<
 
     let query = "SELECT";
 
-    // Only use TOP when OFFSET is not set (OFFSET/LIMIT handles pagination)
+    // Use TOP when only limit is set (no offset). OFFSET/LIMIT requires ORDER BY per Cosmos DB spec.
     if (this._limitValue !== undefined && this._offsetValue === undefined) {
       query += ` TOP ${this._limitValue}`;
     }

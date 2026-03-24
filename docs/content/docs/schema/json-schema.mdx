@@ -3,7 +3,7 @@ title: JSON Schema
 description: Generate JSON Schema from model definitions with Cosmio extensions
 ---
 
-Generate JSON Schema (2019-09) from Cosmio model definitions using `zod-to-json-schema` with Cosmio-specific extensions.
+Generate JSON Schema (2020-12) from Cosmio model definitions using Zod v4's native `toJSONSchema()` with Cosmio-specific extensions.
 
 ## Single Model
 
@@ -18,7 +18,7 @@ Output:
 
 ```json
 {
-  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "User",
   "description": "Application users",
   "x-cosmio-container": "users",

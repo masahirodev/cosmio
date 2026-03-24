@@ -73,44 +73,45 @@ function describeZodType(type: z.ZodTypeAny): {
   description: string;
 } {
   const description = type.description ?? "";
+  const def = type._def as unknown as Record<string, unknown>;
 
   // Unwrap optional/nullable
-  if (type._def.typeName === "ZodOptional") {
-    const inner = describeZodType(type._def.innerType);
+  if (def.type === "optional") {
+    const inner = describeZodType(def.innerType as z.ZodTypeAny);
     return { ...inner, isOptional: true, description: description || inner.description };
   }
-  if (type._def.typeName === "ZodNullable") {
-    const inner = describeZodType(type._def.innerType);
+  if (def.type === "nullable") {
+    const inner = describeZodType(def.innerType as z.ZodTypeAny);
     return {
       typeName: `${inner.typeName} \\| null`,
       isOptional: inner.isOptional,
       description: description || inner.description,
     };
   }
-  if (type._def.typeName === "ZodDefault") {
-    const inner = describeZodType(type._def.innerType);
+  if (def.type === "default") {
+    const inner = describeZodType(def.innerType as z.ZodTypeAny);
     return { ...inner, isOptional: true, description: description || inner.description };
   }
 
   const typeMap: Record<string, string> = {
-    ZodString: "string",
-    ZodNumber: "number",
-    ZodBoolean: "boolean",
-    ZodDate: "Date",
-    ZodArray: "array",
-    ZodObject: "object",
-    ZodEnum: "enum",
-    ZodLiteral: `literal`,
-    ZodUnion: "union",
-    ZodRecord: "record",
-    ZodAny: "any",
-    ZodUnknown: "unknown",
+    string: "string",
+    number: "number",
+    boolean: "boolean",
+    date: "Date",
+    array: "array",
+    object: "object",
+    enum: "enum",
+    literal: "literal",
+    union: "union",
+    record: "record",
+    any: "any",
+    unknown: "unknown",
   };
 
   const typeName =
-    type._def.typeName === "ZodLiteral"
-      ? `\`${JSON.stringify(type._def.value)}\``
-      : (typeMap[type._def.typeName as string] ?? type._def.typeName ?? "unknown");
+    def.type === "literal"
+      ? `\`${JSON.stringify((def.values as unknown[])?.[0] ?? def.value)}\``
+      : (typeMap[def.type as string] ?? (def.type as string) ?? "unknown");
 
   return { typeName, isOptional: false, description };
 }

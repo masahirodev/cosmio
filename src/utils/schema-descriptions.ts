@@ -33,13 +33,9 @@ function resolveDescription(type: z.ZodTypeAny): string | undefined {
   if (type.description) return type.description;
 
   // Unwrap wrappers to find inner description
-  const def = type._def;
-  if (
-    def.typeName === "ZodOptional" ||
-    def.typeName === "ZodNullable" ||
-    def.typeName === "ZodDefault"
-  ) {
-    return resolveDescription(def.innerType);
+  const def = type._def as unknown as Record<string, unknown>;
+  if (def.type === "optional" || def.type === "nullable" || def.type === "default") {
+    return resolveDescription(def.innerType as z.ZodTypeAny);
   }
 
   return undefined;
