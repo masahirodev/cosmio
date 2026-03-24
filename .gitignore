@@ -4,6 +4,7 @@ dist/
 .env
 .env.*
 
+CLAUDE.md
 .claude/
 docs/.next/
 docs/node_modules/
