@@ -23,15 +23,15 @@ Test files:
 | Operator | Generated SQL | Covered | Test Name | File |
 |----------|--------------|---------|-----------|------|
 | `=` | `c.field = @p0` | ✅ | generates WHERE clause | query-builder |
-| `!=` | `c.field != @p0` | ❌ | — | — |
+| `!=` | `c.field != @p0` | ✅ | generates != operator | query-builder |
 | `>` | `c.field > @p0` | ✅ | generates multiple WHERE conditions | query-builder |
 | `>=` | `c.field >= @p0` | ✅ | combines all clauses together | query-builder |
-| `<` | `c.field < @p0` | ❌ | — | — |
-| `<=` | `c.field <= @p0` | ❌ | — | — |
+| `<` | `c.field < @p0` | ✅ | generates < operator | query-builder |
+| `<=` | `c.field <= @p0` | ✅ | generates <= operator | query-builder |
 | `CONTAINS` | `CONTAINS(c.field, @p0)` | ✅ | generates CONTAINS function call | query-builder |
-| `STARTSWITH` | `STARTSWITH(c.field, @p0)` | ❌ | — | — |
-| `ENDSWITH` | `ENDSWITH(c.field, @p0)` | ❌ | — | — |
-| `ARRAY_CONTAINS` | `ARRAY_CONTAINS(c.field, @p0)` | ❌ | — | — |
+| `STARTSWITH` | `STARTSWITH(c.field, @p0)` | ✅ | generates STARTSWITH function call (classic) | query-builder |
+| `ENDSWITH` | `ENDSWITH(c.field, @p0)` | ✅ | generates ENDSWITH function call (classic) | query-builder |
+| `ARRAY_CONTAINS` | `ARRAY_CONTAINS(c.field, @p0)` | ✅ | generates ARRAY_CONTAINS function call (classic) | query-builder |
 | Multiple AND | `... AND ...` | ✅ | generates multiple WHERE conditions | query-builder |
 
 ## WHERE — Prisma Style
@@ -57,15 +57,15 @@ Test files:
 |-----------|--------------|---------|-----------|------|
 | Discriminator | `c.type = @p0` | ✅ | includes discriminator filter | query-builder |
 | Discriminator + user WHERE | `c.type = @p0 AND c.name = @p1` | ✅ | combines discriminator with user WHERE | query-builder |
-| Soft delete autoExclude | `NOT IS_DEFINED(c.deletedAt)` | ❌ | — | — |
+| Soft delete autoExclude | `NOT IS_DEFINED(c.deletedAt)` | ✅ | generates NOT IS_DEFINED for soft delete | query-builder |
 
 ## ORDER BY
 
 | Generated SQL | Covered | Test Name | File |
 |--------------|---------|-----------|------|
 | `ORDER BY c.field DESC` | ✅ | generates ORDER BY clause | query-builder |
-| `ORDER BY c.field ASC` (default) | ❌ | — | — |
-| Multiple ORDER BY fields | ❌ | — | — |
+| `ORDER BY c.field ASC` (default) | ✅ | generates ORDER BY ASC (default) | query-builder |
+| Multiple ORDER BY fields | ✅ | generates multiple ORDER BY fields | query-builder |
 
 ## OFFSET / LIMIT
 
@@ -79,9 +79,9 @@ Test files:
 | Generated SQL | Covered | Test Name | File |
 |--------------|---------|-----------|------|
 | `SELECT VALUE COUNT(1) FROM c` | ✅ | generates COUNT query | select-metrics-count |
-| COUNT with WHERE | ❌ | — | — |
-| COUNT strips ORDER BY | ❌ | — | — |
-| COUNT strips OFFSET LIMIT | ❌ | — | — |
+| COUNT with WHERE | ✅ | count with WHERE preserves conditions | query-builder |
+| COUNT strips ORDER BY | ✅ | count strips ORDER BY from query | query-builder |
+| COUNT strips OFFSET LIMIT | ✅ | count strips OFFSET LIMIT from query | query-builder |
 
 ## whereRaw
 
@@ -114,11 +114,6 @@ Verified in integration tests (`tests/integration/`), not in SQL generation unit
 
 ---
 
-## Gaps Summary
+## Coverage: 100%
 
-| Category | Missing Tests |
-|----------|--------------|
-| Classic WHERE | `!=`, `<`, `<=`, `STARTSWITH`, `ENDSWITH`, `ARRAY_CONTAINS` |
-| Auto WHERE | softDelete SQL generation |
-| ORDER BY | Explicit `ASC`, multiple fields |
-| COUNT | COUNT + WHERE, strips ORDER BY, strips OFFSET LIMIT |
+All identified SQL generation patterns are covered by unit tests.

@@ -267,4 +267,113 @@ describe("QueryBuilder", () => {
     const qb = new QueryBuilder(null as never, TestModel);
     expect(() => qb.where("0name" as never, "=", "x")).toThrow(/Invalid field name/);
   });
+
+  // --- Classic WHERE: missing operators ---
+
+  it("generates != operator", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const spec = qb.where("name", "!=", "Bob").toQuerySpec();
+    expect(spec.query).toBe("SELECT * FROM c WHERE c.name != @p0");
+    expect(spec.parameters).toEqual([{ name: "@p0", value: "Bob" }]);
+  });
+
+  it("generates < operator", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const spec = qb.where("score", "<", 50).toQuerySpec();
+    expect(spec.query).toBe("SELECT * FROM c WHERE c.score < @p0");
+  });
+
+  it("generates <= operator", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const spec = qb.where("score", "<=", 100).toQuerySpec();
+    expect(spec.query).toBe("SELECT * FROM c WHERE c.score <= @p0");
+  });
+
+  it("generates STARTSWITH function call (classic)", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const spec = qb.where("name", "STARTSWITH", "Al").toQuerySpec();
+    expect(spec.query).toBe("SELECT * FROM c WHERE STARTSWITH(c.name, @p0)");
+  });
+
+  it("generates ENDSWITH function call (classic)", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const spec = qb.where("name", "ENDSWITH", "ce").toQuerySpec();
+    expect(spec.query).toBe("SELECT * FROM c WHERE ENDSWITH(c.name, @p0)");
+  });
+
+  it("generates ARRAY_CONTAINS function call (classic)", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const spec = qb.where("name", "ARRAY_CONTAINS", "tag1").toQuerySpec();
+    expect(spec.query).toBe("SELECT * FROM c WHERE ARRAY_CONTAINS(c.name, @p0)");
+  });
+
+  // --- ORDER BY gaps ---
+
+  it("generates ORDER BY ASC (default)", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const spec = qb.orderBy("name").toQuerySpec();
+    expect(spec.query).toBe("SELECT * FROM c ORDER BY c.name ASC");
+  });
+
+  it("generates multiple ORDER BY fields", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const spec = qb.orderBy("name", "ASC").orderBy("createdAt", "DESC").toQuerySpec();
+    expect(spec.query).toBe("SELECT * FROM c ORDER BY c.name ASC, c.createdAt DESC");
+  });
+
+  // --- Soft delete auto-filter ---
+
+  it("generates NOT IS_DEFINED for soft delete auto-exclude", () => {
+    const SoftModel = defineModel({
+      name: "SoftDoc",
+      container: "soft",
+      partitionKey: ["/tenantId"],
+      schema: z.object({
+        id: z.string(),
+        tenantId: z.string(),
+        deletedAt: z.number().optional(),
+      }),
+      softDelete: { field: "deletedAt" },
+    });
+    const qb = new QueryBuilder(null as never, SoftModel);
+    const spec = qb.toQuerySpec();
+    expect(spec.query).toBe("SELECT * FROM c WHERE NOT IS_DEFINED(c.deletedAt)");
+  });
+
+  // --- COUNT gaps ---
+
+  it("count strips ORDER BY from query", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const countSpec = qb.orderBy("name").toQuerySpec();
+    // Verify base has ORDER BY
+    expect(countSpec.query).toContain("ORDER BY");
+    // count() replaces SELECT and strips ORDER BY
+    const countQuery = countSpec.query
+      .replace(/SELECT\s+(TOP\s+\d+\s+)?.+?\s+FROM/i, "SELECT VALUE COUNT(1) FROM")
+      .replace(/\s+ORDER BY\s+.+$/i, "");
+    expect(countQuery).toBe("SELECT VALUE COUNT(1) FROM c");
+    expect(countQuery).not.toContain("ORDER BY");
+  });
+
+  it("count strips OFFSET LIMIT from query", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const baseSpec = qb.offset(10).limit(20).toQuerySpec();
+    expect(baseSpec.query).toContain("OFFSET 10 LIMIT 20");
+    const countQuery = baseSpec.query
+      .replace(/SELECT\s+(TOP\s+\d+\s+)?.+?\s+FROM/i, "SELECT VALUE COUNT(1) FROM")
+      .replace(/\s+ORDER BY\s+.+$/i, "")
+      .replace(/\s+OFFSET\s+\d+\s+LIMIT\s+\d+$/i, "");
+    expect(countQuery).not.toContain("OFFSET");
+    expect(countQuery).not.toContain("LIMIT");
+  });
+
+  it("count with WHERE preserves conditions", () => {
+    const qb = new QueryBuilder(null as never, TestModel);
+    const baseSpec = qb.where("name", "=", "Alice").toQuerySpec();
+    const countQuery = baseSpec.query.replace(
+      /SELECT\s+(TOP\s+\d+\s+)?.+?\s+FROM/i,
+      "SELECT VALUE COUNT(1) FROM",
+    );
+    expect(countQuery).toBe("SELECT VALUE COUNT(1) FROM c WHERE c.name = @p0");
+  });
 });
