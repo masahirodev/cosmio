@@ -22,6 +22,9 @@ const NoteModel = defineModel({
 });
 
 describe("Hooks + Cache (integration)", () => {
+  const isVnextPreview = process.env.COSMOS_EMULATOR_FLAVOR !== "full";
+  const itPatch = isVnextPreview ? it.skip : it;
+
   const client = createTestClient();
   const notes = client.model(NoteModel);
 
@@ -83,7 +86,7 @@ describe("Hooks + Cache (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — patch非サポート
-  it.skip("cache invalidation after write", async () => {
+  itPatch("cache invalidation after write", async () => {
     await withCosmioContext(async () => {
       // Read
       const before = await notes.findById("n1", ["u1"]);

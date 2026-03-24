@@ -91,6 +91,9 @@ export async function ensureContainers(
     if (existing) {
       // Check for conflicting settings
       const conflicts: string[] = [];
+      if (JSON.stringify(existing.partitionKey) !== JSON.stringify(model.partitionKey)) {
+        conflicts.push("partitionKey");
+      }
       if (JSON.stringify(existing.indexingPolicy) !== JSON.stringify(model.indexingPolicy)) {
         conflicts.push("indexingPolicy");
       }

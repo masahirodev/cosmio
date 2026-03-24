@@ -33,6 +33,9 @@ const CommentModel = defineModel({
 });
 
 describe("Multi-model container (discriminator)", () => {
+  const isVnextPreview = process.env.COSMOS_EMULATOR_FLAVOR !== "full";
+  const itQuery = isVnextPreview ? it.skip : it;
+
   const client = createTestClient();
   const articles = client.model(ArticleModel);
   const comments = client.model(CommentModel);
@@ -47,7 +50,8 @@ describe("Multi-model container (discriminator)", () => {
     await cleanupTestDatabase();
   });
 
-  it("stores different models in the same container", async () => {
+  // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
+  itQuery("stores different models in the same container", async () => {
     await articles.create({
       id: "art-1",
       tenantId: "t1",
@@ -74,7 +78,7 @@ describe("Multi-model container (discriminator)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("query builder auto-filters by discriminator", async () => {
+  itQuery("query builder auto-filters by discriminator", async () => {
     await articles.upsert({ id: "art-2", tenantId: "t1", type: "article", title: "Post 2" });
     await articles.upsert({ id: "art-3", tenantId: "t1", type: "article", title: "Post 3" });
     await comments.upsert({
@@ -101,7 +105,7 @@ describe("Multi-model container (discriminator)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("rejects document with wrong discriminator value", async () => {
+  itQuery("rejects document with wrong discriminator value", async () => {
     await expect(
       articles.create({
         id: "bad",

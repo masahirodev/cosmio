@@ -18,6 +18,10 @@ const SoftModel = defineModel({
 });
 
 describe("Soft Delete (integration)", () => {
+  const isVnextPreview = process.env.COSMOS_EMULATOR_FLAVOR !== "full";
+  const itPatch = isVnextPreview ? it.skip : it;
+  const itQuery = isVnextPreview ? it.skip : it;
+
   const client = createTestClient();
   const docs = client.model(SoftModel);
 
@@ -31,7 +35,7 @@ describe("Soft Delete (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — patch非サポート
-  it.skip("soft delete sets deletedAt, findById returns undefined", async () => {
+  itPatch("soft delete sets deletedAt, findById returns undefined", async () => {
     await docs.create({ id: "sd-1", tenantId: "t1", name: "Test" });
 
     await docs.delete("sd-1", ["t1"]);
@@ -41,7 +45,7 @@ describe("Soft Delete (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — patch非サポート（依存）
-  it.skip("findWithDeleted returns soft-deleted docs", async () => {
+  itPatch("findWithDeleted returns soft-deleted docs", async () => {
     const results = await docs.findWithDeleted(["t1"]).exec();
     const deleted = results.find((r) => r.id === "sd-1");
     expect(deleted).toBeDefined();
@@ -49,7 +53,7 @@ describe("Soft Delete (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — patch非サポート
-  it.skip("restore brings back soft-deleted doc", async () => {
+  itPatch("restore brings back soft-deleted doc", async () => {
     const restored = await docs.restore("sd-1", ["t1"]);
     expect(restored).toBeDefined();
 
@@ -59,7 +63,7 @@ describe("Soft Delete (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("hardDelete physically removes", async () => {
+  itQuery("hardDelete physically removes", async () => {
     await docs.hardDelete("sd-1", ["t1"]);
 
     const results = await docs.findWithDeleted(["t1"]).exec();

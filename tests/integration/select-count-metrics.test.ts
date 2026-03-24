@@ -19,6 +19,9 @@ const ProductModel = defineModel({
 });
 
 describe("Select, Count, Metrics (integration)", () => {
+  const isVnextPreview = process.env.COSMOS_EMULATOR_FLAVOR !== "full";
+  const itQuery = isVnextPreview ? it.skip : it;
+
   const client = createTestClient();
   const products = client.model(ProductModel);
 
@@ -67,13 +70,13 @@ describe("Select, Count, Metrics (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("count returns total without fetching documents", async () => {
+  itQuery("count returns total without fetching documents", async () => {
     const total = await products.find(["electronics"]).count();
     expect(total).toBeGreaterThanOrEqual(3);
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("count with where filter", async () => {
+  itQuery("count with where filter", async () => {
     const inStockCount = await products.find(["electronics"]).where({ inStock: true }).count();
     expect(inStockCount).toBe(2);
   });
@@ -96,7 +99,7 @@ describe("Select, Count, Metrics (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("createWithMetrics returns RU", async () => {
+  itQuery("createWithMetrics returns RU", async () => {
     const { result, ru } = await products.createWithMetrics({
       id: "p-metrics",
       category: "test",
@@ -114,7 +117,7 @@ describe("Select, Count, Metrics (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("findByIdWithMetrics returns RU", async () => {
+  itQuery("findByIdWithMetrics returns RU", async () => {
     const { result, ru } = await products.findByIdWithMetrics("p1", ["electronics"]);
     expect(result).toBeDefined();
     expect(ru).toBeGreaterThan(0);

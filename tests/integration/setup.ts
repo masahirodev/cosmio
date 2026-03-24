@@ -37,18 +37,19 @@ export function createTestClient(): CosmioClient {
 }
 
 /**
- * Ensure the test database exists, creating it if needed.
+ * Ensure a clean test database exists.
+ * Deletes any existing DB first to avoid stale data between test files.
  */
 export async function ensureTestDatabase(): Promise<void> {
   const cosmos = createEmulatorCosmosClient();
   try {
-    await cosmos.databases.createIfNotExists({ id: TEST_DATABASE });
-  } catch (e: unknown) {
-    // Ignore 409 (already exists) — can happen with parallel test files
-    if (typeof e === "object" && e !== null && "code" in e && (e as { code: unknown }).code === 409)
-      return;
-    throw e;
+    await cosmos.database(TEST_DATABASE).delete();
+  } catch {
+    // ignore
   }
+  // vnext-preview emulator needs time to finalize deletion
+  await new Promise((r) => setTimeout(r, 1000));
+  await cosmos.databases.createIfNotExists({ id: TEST_DATABASE });
 }
 
 /**

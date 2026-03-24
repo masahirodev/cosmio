@@ -17,6 +17,9 @@ const InspectionModel = defineModel({
 });
 
 describe("Hierarchical partition key", () => {
+  const isVnextPreview = process.env.COSMOS_EMULATOR_FLAVOR !== "full";
+  const itQuery = isVnextPreview ? it.skip : it;
+
   const client = createTestClient();
   const inspections = client.model(InspectionModel);
 
@@ -30,7 +33,7 @@ describe("Hierarchical partition key", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("CRUD with hierarchical PK [tenantId, siteId]", async () => {
+  itQuery("CRUD with hierarchical PK [tenantId, siteId]", async () => {
     await inspections.create({
       id: "insp-1",
       tenantId: "t1",
@@ -49,7 +52,7 @@ describe("Hierarchical partition key", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("query scoped to hierarchical PK", async () => {
+  itQuery("query scoped to hierarchical PK", async () => {
     await inspections.upsert({ id: "insp-a", tenantId: "t1", siteId: "s1", name: "A" });
     await inspections.upsert({ id: "insp-b", tenantId: "t1", siteId: "s1", name: "B" });
     await inspections.upsert({ id: "insp-c", tenantId: "t1", siteId: "s2", name: "C" });

@@ -73,7 +73,7 @@ jobs:
         run: |
           echo "Waiting for Cosmos DB emulator..."
           for i in $(seq 1 30); do
-            if curl -ks https://localhost:8081/_explorer/emulator.pem > /dev/null 2>&1; then
+            if curl -ksf https://localhost:8081/_explorer/emulator.pem > /dev/null 2>&1; then
               echo "Emulator is ready!"
               exit 0
             fi

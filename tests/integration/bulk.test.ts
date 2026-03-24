@@ -16,6 +16,9 @@ const ItemModel = defineModel({
 });
 
 describe("Bulk operations", () => {
+  const isVnextPreview = process.env.COSMOS_EMULATOR_FLAVOR !== "full";
+  const itBulk = isVnextPreview ? it.skip : it;
+
   const client = createTestClient();
   const items = client.model(ItemModel);
 
@@ -28,7 +31,8 @@ describe("Bulk operations", () => {
     await cleanupTestDatabase();
   });
 
-  it("bulk create multiple items", async () => {
+  // SKIP: vnext-preview emulator does not support bulk operations
+  itBulk("bulk create multiple items", async () => {
     await items.bulk([
       { type: "create", body: { id: "i1", category: "electronics", name: "Phone" } },
       { type: "create", body: { id: "i2", category: "electronics", name: "Laptop" } },
@@ -44,7 +48,8 @@ describe("Bulk operations", () => {
     expect(novel!.name).toBe("Novel");
   });
 
-  it("bulk upsert updates existing items", async () => {
+  // SKIP: vnext-preview emulator does not support bulk operations
+  itBulk("bulk upsert updates existing items", async () => {
     await items.bulk([
       { type: "upsert", body: { id: "i1", category: "electronics", name: "Phone Pro" } },
     ]);
@@ -53,7 +58,8 @@ describe("Bulk operations", () => {
     expect(updated!.name).toBe("Phone Pro");
   });
 
-  it("bulk delete removes items", async () => {
+  // SKIP: vnext-preview emulator does not support bulk operations
+  itBulk("bulk delete removes items", async () => {
     await items.bulk([
       { type: "delete", id: "i1", partitionKeyValues: ["electronics"] },
       { type: "delete", id: "i2", partitionKeyValues: ["electronics"] },

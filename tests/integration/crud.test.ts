@@ -19,6 +19,9 @@ const UserModel = defineModel({
 });
 
 describe("CRUD operations", () => {
+  const isVnextPreview = process.env.COSMOS_EMULATOR_FLAVOR !== "full";
+  const itPatch = isVnextPreview ? it.skip : it;
+
   const client = createTestClient();
   const users = client.model(UserModel);
 
@@ -99,7 +102,7 @@ describe("CRUD operations", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — patch非サポート
-  it.skip("patch performs partial update", async () => {
+  itPatch("patch performs partial update", async () => {
     await users.create({
       id: "user-4",
       tenantId: "t1",

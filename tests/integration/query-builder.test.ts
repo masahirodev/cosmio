@@ -19,6 +19,9 @@ const TaskModel = defineModel({
 });
 
 describe("Query Builder (integration)", () => {
+  const isVnextPreview = process.env.COSMOS_EMULATOR_FLAVOR !== "full";
+  const itQuery = isVnextPreview ? it.skip : it;
+
   const client = createTestClient();
   const tasks = client.model(TaskModel);
 
@@ -91,14 +94,14 @@ describe("Query Builder (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("where with CONTAINS", async () => {
+  itQuery("where with CONTAINS", async () => {
     const results = await tasks.find(["p1"]).where("title", "CONTAINS", "Fix").exec();
 
     expect(results).toHaveLength(2);
   });
 
   // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
-  it.skip("where with comparison operator", async () => {
+  itQuery("where with comparison operator", async () => {
     const results = await tasks.find(["p1"]).where("priority", ">=", 2).exec();
 
     expect(results).toHaveLength(2); // priority 3 and 2
@@ -117,13 +120,13 @@ describe("Query Builder (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — TOP N syntax error
-  it.skip("limit restricts result count", async () => {
+  itQuery("limit restricts result count", async () => {
     const results = await tasks.find(["p1"]).limit(2).exec();
     expect(results).toHaveLength(2);
   });
 
   // SKIP: vnext-preview emulator limitation — continuations not supported with ORDER BY + LIMIT
-  it.skip("combined where + orderBy + limit", async () => {
+  itQuery("combined where + orderBy + limit", async () => {
     const results = await tasks
       .find(["p1"])
       .where("status", "=", "open")
@@ -136,7 +139,7 @@ describe("Query Builder (integration)", () => {
   });
 
   // SKIP: vnext-preview emulator limitation — BindComplete backend message error
-  it.skip("raw query works", async () => {
+  itQuery("raw query works", async () => {
     const results = await tasks.query(
       {
         query: "SELECT * FROM c WHERE c.projectId = @pid",
