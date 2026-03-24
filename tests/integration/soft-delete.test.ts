@@ -30,7 +30,7 @@ describe("Soft Delete (integration)", () => {
     await cleanupTestDatabase();
   });
 
-  // TODO: vnext-preview emulator does not support patch operations (soft delete uses patch internally)
+  // SKIP: vnext-preview emulator limitation — patch非サポート
   it.skip("soft delete sets deletedAt, findById returns undefined", async () => {
     await docs.create({ id: "sd-1", tenantId: "t1", name: "Test" });
 
@@ -40,7 +40,7 @@ describe("Soft Delete (integration)", () => {
     expect(found).toBeUndefined();
   });
 
-  // TODO: vnext-preview emulator does not support patch operations (depends on soft delete)
+  // SKIP: vnext-preview emulator limitation — patch非サポート（依存）
   it.skip("findWithDeleted returns soft-deleted docs", async () => {
     const results = await docs.findWithDeleted(["t1"]).exec();
     const deleted = results.find((r) => r.id === "sd-1");
@@ -48,7 +48,7 @@ describe("Soft Delete (integration)", () => {
     expect(deleted!.deletedAt).toBeDefined();
   });
 
-  // TODO: vnext-preview emulator does not support patch operations (restore uses patch internally)
+  // SKIP: vnext-preview emulator limitation — patch非サポート
   it.skip("restore brings back soft-deleted doc", async () => {
     const restored = await docs.restore("sd-1", ["t1"]);
     expect(restored).toBeDefined();
@@ -58,7 +58,7 @@ describe("Soft Delete (integration)", () => {
     expect(found!.name).toBe("Test");
   });
 
-  // TODO: vnext-preview emulator returns "unknown type of jsonb container" for delete operations
+  // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
   it.skip("hardDelete physically removes", async () => {
     await docs.hardDelete("sd-1", ["t1"]);
 

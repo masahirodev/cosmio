@@ -58,8 +58,7 @@ describe("Migration (integration)", () => {
     CosmioClient.resetInstances();
   });
 
-  // TODO: vnext-preview emulator returns "unknown type of jsonb container" for direct item insert
-  it.skip("reads v1 documents and auto-migrates on read", async () => {
+  it("reads v1 documents and auto-migrates on read", async () => {
     // Set up migrations
     const migrations = new MigrationRegistry({ versionField: "_v" });
 

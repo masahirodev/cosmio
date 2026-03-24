@@ -40,8 +40,7 @@ describe("Hooks + Cache (integration)", () => {
     await cleanupTestDatabase();
   });
 
-  // TODO: vnext-preview emulator returns "unknown type of jsonb container"
-  it.skip("beforeCreate hook mutates document before write", async () => {
+  it("beforeCreate hook mutates document before write", async () => {
     notes.use("beforeCreate", (doc) => {
       doc.updatedBy = "hook-system";
     });
@@ -68,8 +67,7 @@ describe("Hooks + Cache (integration)", () => {
     expect(created.body).toBe("");
   });
 
-  // TODO: vnext-preview emulator returns "unknown type of jsonb container"
-  it.skip("request-scoped cache works via withCosmioContext", async () => {
+  it("request-scoped cache works via withCosmioContext", async () => {
     await withCosmioContext(async () => {
       // First read
       const note1 = await notes.findById("n1", ["u1"]);
@@ -84,7 +82,7 @@ describe("Hooks + Cache (integration)", () => {
     });
   });
 
-  // TODO: vnext-preview emulator does not support patch operations
+  // SKIP: vnext-preview emulator limitation — patch非サポート
   it.skip("cache invalidation after write", async () => {
     await withCosmioContext(async () => {
       // Read

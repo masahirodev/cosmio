@@ -66,13 +66,13 @@ describe("Select, Count, Metrics (integration)", () => {
     expect(results[0]).toHaveProperty("price");
   });
 
-  // TODO: vnext-preview emulator does not support complex queries (unknown type of jsonb container)
+  // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
   it.skip("count returns total without fetching documents", async () => {
     const total = await products.find(["electronics"]).count();
     expect(total).toBeGreaterThanOrEqual(3);
   });
 
-  // TODO: vnext-preview emulator does not support complex queries (unknown type of jsonb container)
+  // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
   it.skip("count with where filter", async () => {
     const inStockCount = await products.find(["electronics"]).where({ inStock: true }).count();
     expect(inStockCount).toBe(2);
@@ -95,7 +95,7 @@ describe("Select, Count, Metrics (integration)", () => {
     expect(results).toHaveLength(1);
   });
 
-  // TODO: vnext-preview emulator does not support metrics
+  // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
   it.skip("createWithMetrics returns RU", async () => {
     const { result, ru } = await products.createWithMetrics({
       id: "p-metrics",
@@ -113,7 +113,7 @@ describe("Select, Count, Metrics (integration)", () => {
     await products.hardDelete("p-metrics", ["test"]);
   });
 
-  // TODO: vnext-preview emulator does not support metrics
+  // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
   it.skip("findByIdWithMetrics returns RU", async () => {
     const { result, ru } = await products.findByIdWithMetrics("p1", ["electronics"]);
     expect(result).toBeDefined();

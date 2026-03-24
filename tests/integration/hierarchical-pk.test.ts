@@ -29,7 +29,7 @@ describe("Hierarchical partition key", () => {
     await cleanupTestDatabase();
   });
 
-  // TODO: vnext-preview emulator returns "unknown type of jsonb container" for hierarchical PK CRUD
+  // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
   it.skip("CRUD with hierarchical PK [tenantId, siteId]", async () => {
     await inspections.create({
       id: "insp-1",
@@ -48,7 +48,7 @@ describe("Hierarchical partition key", () => {
     expect(deleted).toBeUndefined();
   });
 
-  // TODO: vnext-preview emulator does not support complex queries with hierarchical PK
+  // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
   it.skip("query scoped to hierarchical PK", async () => {
     await inspections.upsert({ id: "insp-a", tenantId: "t1", siteId: "s1", name: "A" });
     await inspections.upsert({ id: "insp-b", tenantId: "t1", siteId: "s1", name: "B" });

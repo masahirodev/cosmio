@@ -28,8 +28,7 @@ describe("Bulk operations", () => {
     await cleanupTestDatabase();
   });
 
-  // TODO: vnext-preview emulator does not support bulk operations properly
-  it.skip("bulk create multiple items", async () => {
+  it("bulk create multiple items", async () => {
     await items.bulk([
       { type: "create", body: { id: "i1", category: "electronics", name: "Phone" } },
       { type: "create", body: { id: "i2", category: "electronics", name: "Laptop" } },
@@ -45,8 +44,7 @@ describe("Bulk operations", () => {
     expect(novel!.name).toBe("Novel");
   });
 
-  // TODO: vnext-preview emulator does not support bulk operations properly
-  it.skip("bulk upsert updates existing items", async () => {
+  it("bulk upsert updates existing items", async () => {
     await items.bulk([
       { type: "upsert", body: { id: "i1", category: "electronics", name: "Phone Pro" } },
     ]);
@@ -55,8 +53,7 @@ describe("Bulk operations", () => {
     expect(updated!.name).toBe("Phone Pro");
   });
 
-  // TODO: vnext-preview emulator does not support bulk operations properly
-  it.skip("bulk delete removes items", async () => {
+  it("bulk delete removes items", async () => {
     await items.bulk([
       { type: "delete", id: "i1", partitionKeyValues: ["electronics"] },
       { type: "delete", id: "i2", partitionKeyValues: ["electronics"] },

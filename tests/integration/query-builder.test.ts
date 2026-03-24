@@ -90,14 +90,14 @@ describe("Query Builder (integration)", () => {
     expect(results[0]!.id).toBe("t3");
   });
 
-  // TODO: vnext-preview emulator does not support CONTAINS (unknown type of jsonb container)
+  // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
   it.skip("where with CONTAINS", async () => {
     const results = await tasks.find(["p1"]).where("title", "CONTAINS", "Fix").exec();
 
     expect(results).toHaveLength(2);
   });
 
-  // TODO: vnext-preview emulator does not support complex queries (unknown type of jsonb container)
+  // SKIP: vnext-preview emulator limitation — unknown type of jsonb container
   it.skip("where with comparison operator", async () => {
     const results = await tasks.find(["p1"]).where("priority", ">=", 2).exec();
 
@@ -116,13 +116,13 @@ describe("Query Builder (integration)", () => {
     expect(results[0]!.createdAt).toBe("2025-01-04");
   });
 
-  // TODO: vnext-preview emulator does not support TOP N (syntax error at or near "WHERE")
+  // SKIP: vnext-preview emulator limitation — TOP N syntax error
   it.skip("limit restricts result count", async () => {
     const results = await tasks.find(["p1"]).limit(2).exec();
     expect(results).toHaveLength(2);
   });
 
-  // TODO: vnext-preview emulator does not support TOP N (syntax error at or near "WHERE")
+  // SKIP: vnext-preview emulator limitation — continuations not supported with ORDER BY + LIMIT
   it.skip("combined where + orderBy + limit", async () => {
     const results = await tasks
       .find(["p1"])
@@ -135,7 +135,7 @@ describe("Query Builder (integration)", () => {
     expect(results[0]!.priority).toBeGreaterThanOrEqual(results[1]!.priority);
   });
 
-  // TODO: vnext-preview emulator does not support this query pattern
+  // SKIP: vnext-preview emulator limitation — BindComplete backend message error
   it.skip("raw query works", async () => {
     const results = await tasks.query(
       {
