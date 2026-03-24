@@ -424,6 +424,11 @@ export class QueryBuilder<
 
     let query = "SELECT";
 
+    // Use TOP when only limit is set (no offset). OFFSET/LIMIT requires ORDER BY per Cosmos DB spec.
+    if (this._limitValue !== undefined && this._offsetValue === undefined) {
+      query += ` TOP ${this._limitValue}`;
+    }
+
     if (this._selectFields.length > 0) {
       query += ` ${this._selectFields.map((f) => `c.${f}`).join(", ")} FROM c`;
     } else {
@@ -439,8 +444,8 @@ export class QueryBuilder<
       query += ` ORDER BY ${orderParts.join(", ")}`;
     }
 
-    if (this._limitValue !== undefined || this._offsetValue !== undefined) {
-      query += ` OFFSET ${this._offsetValue ?? 0} LIMIT ${this._limitValue ?? 1000}`;
+    if (this._offsetValue !== undefined) {
+      query += ` OFFSET ${this._offsetValue} LIMIT ${this._limitValue ?? 1000}`;
     }
 
     return { query, parameters };
