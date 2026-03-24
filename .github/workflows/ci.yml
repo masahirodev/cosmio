@@ -52,8 +52,6 @@ jobs:
     services:
       cosmosdb:
         image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
-        env:
-          PROTOCOL: https
         ports:
           - 8081:8081
     env:
@@ -74,7 +72,7 @@ jobs:
         run: |
           echo "Waiting for Cosmos DB emulator..."
           for i in $(seq 1 30); do
-            if curl -ksf https://localhost:8081/_explorer/emulator.pem > /dev/null 2>&1; then
+            if curl -sf http://localhost:8081/ > /dev/null 2>&1; then
               echo "Emulator is ready!"
               exit 0
             fi
