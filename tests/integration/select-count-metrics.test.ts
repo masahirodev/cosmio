@@ -1,8 +1,10 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineModel } from "../../src/model/define-model.js";
 import { ensureContainer } from "../../src/utils/container-setup.js";
-import { createTestClient } from "./setup.js";
+import { createTestClient, setupTestDatabase, teardownTestDatabase } from "./setup.js";
+
+const TEST_FILE = "select-count-metrics";
 
 const ProductModel = defineModel({
   name: "Product",
@@ -19,7 +21,7 @@ const ProductModel = defineModel({
 });
 
 describe("Select, Count, Metrics (integration)", () => {
-  const client = createTestClient();
+  const client = createTestClient(TEST_FILE);
   const products = client.model(ProductModel);
 
   const seedProducts = [
@@ -50,8 +52,13 @@ describe("Select, Count, Metrics (integration)", () => {
   ];
 
   beforeAll(async () => {
+    await setupTestDatabase(TEST_FILE);
     await ensureContainer(client.database, ProductModel);
   }, 60_000);
+
+  afterAll(async () => {
+    await teardownTestDatabase(TEST_FILE);
+  });
 
   /** Helper: seed data for a test and return cleanup function */
   async function seedAndCleanup() {

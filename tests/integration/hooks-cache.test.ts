@@ -1,9 +1,11 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { withCosmioContext } from "../../src/integrations/azure-functions.js";
 import { defineModel } from "../../src/model/define-model.js";
 import { ensureContainer } from "../../src/utils/container-setup.js";
-import { createTestClient } from "./setup.js";
+import { createTestClient, setupTestDatabase, teardownTestDatabase } from "./setup.js";
+
+const TEST_FILE = "hooks-cache";
 
 const NoteModel = defineModel({
   name: "Note",
@@ -22,12 +24,17 @@ const NoteModel = defineModel({
 });
 
 describe("Hooks + Cache (integration)", () => {
-  const client = createTestClient();
+  const client = createTestClient(TEST_FILE);
   const notes = client.model(NoteModel);
 
   beforeAll(async () => {
+    await setupTestDatabase(TEST_FILE);
     await ensureContainer(client.database, NoteModel);
   }, 60_000);
+
+  afterAll(async () => {
+    await teardownTestDatabase(TEST_FILE);
+  });
 
   it("beforeCreate hook mutates document before write", async () => {
     notes.use("beforeCreate", (doc) => {

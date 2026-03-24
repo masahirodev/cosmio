@@ -1,8 +1,10 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineModel } from "../../src/model/define-model.js";
 import { ensureContainer } from "../../src/utils/container-setup.js";
-import { createTestClient } from "./setup.js";
+import { createTestClient, setupTestDatabase, teardownTestDatabase } from "./setup.js";
+
+const TEST_FILE = "multi-model";
 
 const ArticleModel = defineModel({
   name: "Article",
@@ -32,14 +34,19 @@ const CommentModel = defineModel({
 });
 
 describe("Multi-model container (discriminator)", () => {
-  const client = createTestClient();
+  const client = createTestClient(TEST_FILE);
   const articles = client.model(ArticleModel);
   const comments = client.model(CommentModel);
 
   beforeAll(async () => {
+    await setupTestDatabase(TEST_FILE);
     // Both models share the same container "test-multi-model"
     await ensureContainer(client.database, ArticleModel);
   }, 60_000);
+
+  afterAll(async () => {
+    await teardownTestDatabase(TEST_FILE);
+  });
 
   it("stores different models in the same container", async () => {
     await articles.create({

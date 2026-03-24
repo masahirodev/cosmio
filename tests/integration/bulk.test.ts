@@ -1,8 +1,10 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineModel } from "../../src/model/define-model.js";
 import { ensureContainer } from "../../src/utils/container-setup.js";
-import { createTestClient } from "./setup.js";
+import { createTestClient, setupTestDatabase, teardownTestDatabase } from "./setup.js";
+
+const TEST_FILE = "bulk";
 
 const ItemModel = defineModel({
   name: "Item",
@@ -16,12 +18,17 @@ const ItemModel = defineModel({
 });
 
 describe("Bulk operations", () => {
-  const client = createTestClient();
+  const client = createTestClient(TEST_FILE);
   const items = client.model(ItemModel);
 
   beforeAll(async () => {
+    await setupTestDatabase(TEST_FILE);
     await ensureContainer(client.database, ItemModel);
   }, 60_000);
+
+  afterAll(async () => {
+    await teardownTestDatabase(TEST_FILE);
+  });
 
   it("bulk create multiple items", async () => {
     await items.bulk([

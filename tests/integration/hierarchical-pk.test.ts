@@ -1,8 +1,10 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineModel } from "../../src/model/define-model.js";
 import { ensureContainer } from "../../src/utils/container-setup.js";
-import { createTestClient } from "./setup.js";
+import { createTestClient, setupTestDatabase, teardownTestDatabase } from "./setup.js";
+
+const TEST_FILE = "hierarchical-pk";
 
 const InspectionModel = defineModel({
   name: "Inspection",
@@ -17,12 +19,17 @@ const InspectionModel = defineModel({
 });
 
 describe("Hierarchical partition key", () => {
-  const client = createTestClient();
+  const client = createTestClient(TEST_FILE);
   const inspections = client.model(InspectionModel);
 
   beforeAll(async () => {
+    await setupTestDatabase(TEST_FILE);
     await ensureContainer(client.database, InspectionModel);
   }, 60_000);
+
+  afterAll(async () => {
+    await teardownTestDatabase(TEST_FILE);
+  });
 
   it("CRUD with hierarchical PK [tenantId, siteId]", async () => {
     await inspections.create({

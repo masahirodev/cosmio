@@ -4,7 +4,15 @@ import { CosmioClient } from "../../src/client/cosmio-client.js";
 import { MigrationRegistry } from "../../src/migration/migration-registry.js";
 import { defineModel } from "../../src/model/define-model.js";
 import { ensureContainer } from "../../src/utils/container-setup.js";
-import { TEST_DATABASE, TEST_ENDPOINT, TEST_KEY } from "./setup.js";
+import {
+  setupTestDatabase,
+  TEST_ENDPOINT,
+  TEST_KEY,
+  teardownTestDatabase,
+  testDatabaseName,
+} from "./setup.js";
+
+const TEST_FILE = "migration";
 
 // v1 schema: firstName + lastName
 const UserModelV1Schema = z.object({
@@ -26,16 +34,17 @@ const UserModel = defineModel({
 describe("Migration (integration)", () => {
   // Create client WITHOUT migrations first to seed v1 data
   const seedClient = new CosmioClient(
-    { cosmos: { endpoint: TEST_ENDPOINT, key: TEST_KEY }, database: TEST_DATABASE },
+    { cosmos: { endpoint: TEST_ENDPOINT, key: TEST_KEY }, database: testDatabaseName(TEST_FILE) },
     { singleton: false },
   );
 
   beforeAll(async () => {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    await setupTestDatabase(TEST_FILE);
     await ensureContainer(seedClient.database, UserModel);
   }, 60_000);
 
   afterAll(async () => {
+    await teardownTestDatabase(TEST_FILE);
     CosmioClient.resetInstances();
   });
 
@@ -86,7 +95,7 @@ describe("Migration (integration)", () => {
       const client = new CosmioClient(
         {
           cosmos: { endpoint: TEST_ENDPOINT, key: TEST_KEY },
-          database: TEST_DATABASE,
+          database: testDatabaseName(TEST_FILE),
           migrations,
         },
         { singleton: false },
@@ -154,7 +163,7 @@ describe("Migration (integration)", () => {
       const client = new CosmioClient(
         {
           cosmos: { endpoint: TEST_ENDPOINT, key: TEST_KEY },
-          database: TEST_DATABASE,
+          database: testDatabaseName(TEST_FILE),
           migrations,
         },
         { singleton: false },

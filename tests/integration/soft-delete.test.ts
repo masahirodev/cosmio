@@ -1,8 +1,10 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineModel } from "../../src/model/define-model.js";
 import { ensureContainer } from "../../src/utils/container-setup.js";
-import { createTestClient } from "./setup.js";
+import { createTestClient, setupTestDatabase, teardownTestDatabase } from "./setup.js";
+
+const TEST_FILE = "soft-delete";
 
 const SoftModel = defineModel({
   name: "SoftDoc",
@@ -18,12 +20,17 @@ const SoftModel = defineModel({
 });
 
 describe("Soft Delete (integration)", () => {
-  const client = createTestClient();
+  const client = createTestClient(TEST_FILE);
   const docs = client.model(SoftModel);
 
   beforeAll(async () => {
+    await setupTestDatabase(TEST_FILE);
     await ensureContainer(client.database, SoftModel);
   }, 60_000);
+
+  afterAll(async () => {
+    await teardownTestDatabase(TEST_FILE);
+  });
 
   it("soft delete sets deletedAt, findById returns undefined", async () => {
     await docs.create({ id: "sd-1", tenantId: "t1", name: "Test" });

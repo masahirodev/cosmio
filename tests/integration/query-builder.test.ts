@@ -1,8 +1,10 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineModel } from "../../src/model/define-model.js";
 import { ensureContainer } from "../../src/utils/container-setup.js";
-import { createTestClient } from "./setup.js";
+import { createTestClient, setupTestDatabase, teardownTestDatabase } from "./setup.js";
+
+const TEST_FILE = "query-builder";
 
 const TaskModel = defineModel({
   name: "Task",
@@ -19,7 +21,7 @@ const TaskModel = defineModel({
 });
 
 describe("Query Builder (integration)", () => {
-  const client = createTestClient();
+  const client = createTestClient(TEST_FILE);
   const tasks = client.model(TaskModel);
 
   const seeds = [
@@ -66,8 +68,13 @@ describe("Query Builder (integration)", () => {
   ];
 
   beforeAll(async () => {
+    await setupTestDatabase(TEST_FILE);
     await ensureContainer(client.database, TaskModel);
   }, 60_000);
+
+  afterAll(async () => {
+    await teardownTestDatabase(TEST_FILE);
+  });
 
   /** Clean up all seed data */
   async function cleanup() {
@@ -78,11 +85,10 @@ describe("Query Builder (integration)", () => {
     }
   }
 
-  /** Seed data for a test (cleans first to ensure fresh state) */
+  /** Seed data for a test */
   async function seed() {
-    await cleanup();
     for (const s of seeds) {
-      await tasks.create(s);
+      await tasks.upsert(s);
     }
   }
 
