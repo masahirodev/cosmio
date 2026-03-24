@@ -87,6 +87,39 @@ describe("count()", () => {
     const spec = querySpec[0] as { query: string };
     expect(spec.query).toBe("SELECT VALUE COUNT(1) FROM c");
   });
+
+  it("count handles { count: N } object response (vnext emulator)", async () => {
+    const fetchAllFn = vi.fn(async () => ({ resources: [{ count: 7 }] }));
+    const queryFn = vi.fn(() => ({ fetchAll: fetchAllFn }));
+    const mockContainer = { items: { query: queryFn } };
+    const qb = new QueryBuilder(mockContainer as never, UserModel, ["t1"]);
+
+    const count = await qb.count();
+    expect(count).toBe(7);
+  });
+
+  it("count strips ORDER BY", async () => {
+    const fetchAllFn = vi.fn(async () => ({ resources: [5] }));
+    const queryFn = vi.fn(() => ({ fetchAll: fetchAllFn }));
+    const mockContainer = { items: { query: queryFn } };
+    const qb = new QueryBuilder(mockContainer as never, UserModel, ["t1"]);
+
+    await qb.orderBy("name").count();
+    const spec = (queryFn.mock.calls[0] as unknown[])[0] as { query: string };
+    expect(spec.query).not.toContain("ORDER BY");
+  });
+
+  it("count strips OFFSET LIMIT", async () => {
+    const fetchAllFn = vi.fn(async () => ({ resources: [5] }));
+    const queryFn = vi.fn(() => ({ fetchAll: fetchAllFn }));
+    const mockContainer = { items: { query: queryFn } };
+    const qb = new QueryBuilder(mockContainer as never, UserModel, ["t1"]);
+
+    await qb.offset(10).limit(20).count();
+    const spec = (queryFn.mock.calls[0] as unknown[])[0] as { query: string };
+    expect(spec.query).not.toContain("OFFSET");
+    expect(spec.query).not.toContain("LIMIT");
+  });
 });
 
 // ---------- RU Telemetry ----------
