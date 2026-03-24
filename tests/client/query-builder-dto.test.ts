@@ -52,7 +52,7 @@ describe("QueryBuilder.asDto()", () => {
     const spec = qb.asDto("api").where({ name: "Alice" }).orderBy("name").limit(10).toQuerySpec();
     expect(spec.query).toContain("WHERE");
     expect(spec.query).toContain("ORDER BY");
-    expect(spec.query).toContain("TOP 10");
+    expect(spec.query).toContain("LIMIT 10");
   });
 
   it("omit DTO strips fields from query results", async () => {

@@ -252,9 +252,9 @@ export class CosmioContainer<
     if (this.model.softDelete) {
       try {
         const pk = buildPartitionKey(partitionKeyValues as unknown as readonly unknown[]);
-        await this._container
-          .item(id, pk as string | number | boolean)
-          .patch([{ op: "set", path: `/${this.model.softDelete.field}`, value: Date.now() }]);
+        await this._container.item(id, pk as string | number | boolean).patch({
+          operations: [{ op: "set", path: `/${this.model.softDelete.field}`, value: Date.now() }],
+        });
       } catch (error) {
         throw mapCosmosError(error);
       }
@@ -305,7 +305,7 @@ export class CosmioContainer<
       const pk = buildPartitionKey(partitionKeyValues as unknown as readonly unknown[]);
       const { resource } = await this._container
         .item(id, pk as string | number | boolean)
-        .patch([{ op: "remove", path: `/${this.model.softDelete.field}` }]);
+        .patch({ operations: [{ op: "remove", path: `/${this.model.softDelete.field}` }] });
       if (!resource) return undefined;
       return this._processReadAsync(resource as Record<string, unknown>);
     } catch (error) {
@@ -348,9 +348,11 @@ export class CosmioContainer<
     this._invalidateCache(id, partitionKeyValues as unknown as readonly unknown[]);
     try {
       const pk = buildPartitionKey(partitionKeyValues as unknown as readonly unknown[]);
+      // Wrap array form into object form for compatibility with vnext emulator
+      const patchBody = Array.isArray(operations) ? { operations } : operations;
       const { resource } = await this._container
         .item(id, pk as string | number | boolean)
-        .patch(operations);
+        .patch(patchBody);
       if (!resource) throw new CosmioError("Patch returned no resource", "COSMOS_ERROR");
       return this._processReadAsync(resource as Record<string, unknown>);
     } catch (error) {
@@ -592,9 +594,9 @@ export class CosmioContainer<
     try {
       const pk = buildPartitionKey(pkArray);
       if (this.model.softDelete) {
-        const response = await this._container
-          .item(id, pk as string | number | boolean)
-          .patch([{ op: "set", path: `/${this.model.softDelete.field}`, value: Date.now() }]);
+        const response = await this._container.item(id, pk as string | number | boolean).patch({
+          operations: [{ op: "set", path: `/${this.model.softDelete.field}`, value: Date.now() }],
+        });
         await this._hooks.run("afterDelete", { id } as Record<string, unknown>);
         return { result: undefined, ru: extractRU(response.headers) };
       }

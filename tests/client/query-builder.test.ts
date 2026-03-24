@@ -64,10 +64,10 @@ describe("QueryBuilder", () => {
     expect(spec.query).toBe("SELECT * FROM c ORDER BY c.createdAt DESC");
   });
 
-  it("generates TOP with limit", () => {
+  it("generates OFFSET/LIMIT with limit", () => {
     const qb = new QueryBuilder(null as never, TestModel);
     const spec = qb.limit(10).toQuerySpec();
-    expect(spec.query).toBe("SELECT TOP 10 * FROM c");
+    expect(spec.query).toBe("SELECT * FROM c OFFSET 0 LIMIT 10");
   });
 
   it("generates OFFSET/LIMIT", () => {
@@ -99,7 +99,7 @@ describe("QueryBuilder", () => {
       .toQuerySpec();
 
     expect(spec.query).toBe(
-      "SELECT TOP 5 * FROM c WHERE CONTAINS(c.name, @p0) AND c.score >= @p1 ORDER BY c.createdAt DESC",
+      "SELECT * FROM c WHERE CONTAINS(c.name, @p0) AND c.score >= @p1 ORDER BY c.createdAt DESC OFFSET 0 LIMIT 5",
     );
     expect(spec.parameters).toHaveLength(2);
   });
@@ -227,10 +227,10 @@ describe("QueryBuilder", () => {
     expect(spec.query).toContain("OFFSET 10 LIMIT 1000");
   });
 
-  it("limit(0) generates TOP 0", () => {
+  it("limit(0) generates OFFSET 0 LIMIT 0", () => {
     const qb = new QueryBuilder(null as never, TestModel);
     const spec = qb.limit(0).toQuerySpec();
-    expect(spec.query).toBe("SELECT TOP 0 * FROM c");
+    expect(spec.query).toBe("SELECT * FROM c OFFSET 0 LIMIT 0");
   });
 
   it("mixes Prisma-style and classic where calls", () => {

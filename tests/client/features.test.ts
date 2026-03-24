@@ -36,11 +36,12 @@ describe("Soft Delete", () => {
     await container.delete("doc-1", ["t1"]);
 
     expect(patchFn).toHaveBeenCalledOnce();
-    const ops = patchFn.mock.calls[0] as unknown[];
-    const patchOps = (ops as unknown[])[0] as { op: string; path: string; value: unknown }[];
-    expect(patchOps[0]!.op).toBe("set");
-    expect(patchOps[0]!.path).toBe("/deletedAt");
-    expect(typeof patchOps[0]!.value).toBe("number");
+    const arg = (patchFn.mock.calls[0] as unknown[])[0] as {
+      operations: { op: string; path: string; value: unknown }[];
+    };
+    expect(arg.operations[0]!.op).toBe("set");
+    expect(arg.operations[0]!.path).toBe("/deletedAt");
+    expect(typeof arg.operations[0]!.value).toBe("number");
   });
 
   it("hardDelete() physically removes", async () => {
@@ -142,8 +143,10 @@ describe("Soft Delete", () => {
 
     const result = await container.restore("doc-1", ["t1"]);
     expect(result).toBeDefined();
-    const restoreArgs = patchFn.mock.calls[0] as unknown[];
-    expect(restoreArgs[0]).toEqual([{ op: "remove", path: "/deletedAt" }]);
+    const restoreArg = (patchFn.mock.calls[0] as unknown[])[0] as {
+      operations: { op: string; path: string }[];
+    };
+    expect(restoreArg.operations).toEqual([{ op: "remove", path: "/deletedAt" }]);
   });
 });
 

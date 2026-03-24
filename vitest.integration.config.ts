@@ -7,5 +7,6 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 60_000,
     fileParallelism: false,
+    globalSetup: ["tests/integration/global-teardown.ts"],
   },
 });

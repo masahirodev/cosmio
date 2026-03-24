@@ -36,7 +36,9 @@ describe("select()", () => {
   it("works with select + orderBy + limit", () => {
     const qb = new QueryBuilder(null as never, UserModel);
     const spec = qb.select("id", "name", "age").orderBy("age", "DESC").limit(5).toQuerySpec();
-    expect(spec.query).toBe("SELECT TOP 5 c.id, c.name, c.age FROM c ORDER BY c.age DESC");
+    expect(spec.query).toBe(
+      "SELECT c.id, c.name, c.age FROM c ORDER BY c.age DESC OFFSET 0 LIMIT 5",
+    );
   });
 
   it("without select uses SELECT *", () => {

@@ -359,7 +359,13 @@ export class QueryBuilder<
         .query<number>({ query: countQuery, parameters: baseSpec.parameters ?? [] }, options)
         .fetchAll();
 
-      return resources[0] ?? 0;
+      const result = resources[0];
+      if (result === undefined || result === null) return 0;
+      // Handle both direct number and { count: N } (vnext emulator returns object)
+      if (typeof result === "number") return result;
+      if (typeof result === "object" && "count" in (result as object))
+        return (result as { count: number }).count;
+      return 0;
     } catch (error) {
       throw mapCosmosError(error);
     }
@@ -418,11 +424,6 @@ export class QueryBuilder<
 
     let query = "SELECT";
 
-    // Only use TOP when OFFSET is not set (OFFSET/LIMIT handles pagination)
-    if (this._limitValue !== undefined && this._offsetValue === undefined) {
-      query += ` TOP ${this._limitValue}`;
-    }
-
     if (this._selectFields.length > 0) {
       query += ` ${this._selectFields.map((f) => `c.${f}`).join(", ")} FROM c`;
     } else {
@@ -438,8 +439,8 @@ export class QueryBuilder<
       query += ` ORDER BY ${orderParts.join(", ")}`;
     }
 
-    if (this._offsetValue !== undefined) {
-      query += ` OFFSET ${this._offsetValue} LIMIT ${this._limitValue ?? 1000}`;
+    if (this._limitValue !== undefined || this._offsetValue !== undefined) {
+      query += ` OFFSET ${this._offsetValue ?? 0} LIMIT ${this._limitValue ?? 1000}`;
     }
 
     return { query, parameters };
