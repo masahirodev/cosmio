@@ -14,7 +14,6 @@ const EMULATOR_KEY =
 
 export const TEST_ENDPOINT = process.env.COSMOS_TEST_ENDPOINT ?? EMULATOR_ENDPOINT;
 export const TEST_KEY = process.env.COSMOS_TEST_KEY ?? EMULATOR_KEY;
-export const IS_EMULATOR = !process.env.COSMOS_TEST_ENDPOINT;
 
 const DB_PREFIX = process.env.COSMOS_TEST_DATABASE ?? "cosmio-test";
 
@@ -30,9 +29,6 @@ export function testDatabaseName(testFileName: string): string {
  * Create a raw CosmosClient for test setup/teardown.
  */
 export function createCosmosClient(): CosmosClient {
-  if (IS_EMULATOR) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  }
   return new CosmosClient({ endpoint: TEST_ENDPOINT, key: TEST_KEY });
 }
 
@@ -41,9 +37,6 @@ export function createCosmosClient(): CosmosClient {
  * Each file uses its own database.
  */
 export function createTestClient(testFileName: string): CosmioClient {
-  if (IS_EMULATOR) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  }
   return new CosmioClient(
     {
       cosmos: { endpoint: TEST_ENDPOINT, key: TEST_KEY },
