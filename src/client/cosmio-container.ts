@@ -480,9 +480,31 @@ export class CosmioContainer<
           });
         }
       }
-      // Invalidate query caches after successful bulk (data may have changed)
+      // Invalidate caches after successful bulk
       const cache = this._getCache();
-      if (cache) cache.invalidateByPrefix(`query::${this.model.container}::`);
+      if (cache) {
+        // Invalidate point-read caches for upsert/delete operations
+        for (const op of operations) {
+          if (op.type === "upsert") {
+            const record = this._applyDefaults(op.body) as Record<string, unknown>;
+            if (record.id) {
+              const pkVals = extractPartitionKey(
+                this.model,
+                record,
+              ) as unknown as readonly unknown[];
+              cache.invalidate(
+                ReadCache.buildKey(this.model.container, record.id as string, pkVals),
+              );
+            }
+          } else if (op.type === "delete") {
+            cache.invalidate(
+              ReadCache.buildKey(this.model.container, op.id, op.partitionKeyValues),
+            );
+          }
+        }
+        // Invalidate all query caches for this container
+        cache.invalidateByPrefix(`query::${this.model.container}::`);
+      }
     } catch (error) {
       throw mapCosmosError(error);
     }

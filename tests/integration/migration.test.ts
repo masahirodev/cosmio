@@ -171,7 +171,7 @@ describe("Migration (integration)", () => {
       const users = client.model(UserModel);
 
       const allUsers = await users.find(["mig-t2"]).exec();
-      expect(allUsers.length).toBeGreaterThanOrEqual(3);
+      expect(allUsers.length).toBe(3);
 
       // All users should have fullName after migration
       for (const user of allUsers) {

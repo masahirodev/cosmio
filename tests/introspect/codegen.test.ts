@@ -41,7 +41,7 @@ describe("toPascalCase", () => {
     expect(toPascalCase("address")).toBe("Address");
   });
 
-  it('keeps "status" as "Status" (ends in ss — not stripped)', () => {
+  it('keeps "status" as "Status" (ends in us — not stripped)', () => {
     expect(toPascalCase("status")).toBe("Status");
   });
 });

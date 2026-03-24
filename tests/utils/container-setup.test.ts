@@ -81,7 +81,7 @@ describe("ensureContainers", () => {
       defaultTtl: 3600,
     });
 
-    await expect(ensureContainers(db, [modelA, modelB])).resolves.not.toThrow();
+    await ensureContainers(db, [modelA, modelB]);
     // Only one createIfNotExists call since the second model is deduplicated
     expect(db.containers.createIfNotExists).toHaveBeenCalledTimes(1);
   });
